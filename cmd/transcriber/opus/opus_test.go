@@ -45,3 +45,44 @@ func TestOpusDecode(t *testing.T) {
 	err = dec.Destroy()
 	require.NoError(t, err)
 }
+
+func BenchmarkOpusDecode(b *testing.B) {
+
+	f, err := os.Open("../../../testfiles/sample.opus")
+	require.NoError(b, err)
+	defer f.Close()
+
+	ogg, _, err := oggreader.NewWith(f)
+	require.NoError(b, err)
+
+	samples := make([]float32, 320)
+
+	dec, err := NewDecoder(16000, 1)
+	require.NoError(b, err)
+	require.NotNil(b, dec)
+
+	b.StopTimer()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		data, hdr, err := ogg.ParseNextPage()
+		if err == io.EOF {
+			ogg.ResetReader(func(_ int64) io.Reader {
+				_, _ = f.Seek(0, 0)
+				return f
+			})
+			data, hdr, err = ogg.ParseNextPage()
+			require.NoError(b, err)
+		}
+		if hdr.GranulePosition == 0 {
+			continue
+		}
+		b.StartTimer()
+		n, err := dec.Decode(data, samples)
+		b.StopTimer()
+		require.NoError(b, err)
+		require.Equal(b, 320, n)
+	}
+
+	err = dec.Destroy()
+	require.NoError(b, err)
+}
