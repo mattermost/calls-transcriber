@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/streamer45/calls-transcriber/cmd/transcriber/config"
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 )
 
 func main() {
