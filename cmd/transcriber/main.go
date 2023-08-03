@@ -39,12 +39,14 @@ func main() {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
 
-	log.Printf("received SIGTERM, stopping transcriber")
-
-	if err := transcriber.Stop(); err != nil {
-		log.Fatalf("failed to stop transcriber: %s", err)
+	select {
+	case <-transcriber.Done():
+	case <-sig:
+		log.Printf("received SIGTERM, stopping transcriber")
+		if err := transcriber.Stop(); err != nil {
+			log.Fatalf("failed to stop transcriber: %s", err)
+		}
 	}
 
 	log.Printf("transcriber has finished, exiting")
