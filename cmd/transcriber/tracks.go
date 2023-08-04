@@ -9,11 +9,21 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/opus"
+
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/rtcd/client"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media/oggreader"
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
+)
+
+const (
+	trackInAudioRate    = 48000 // Default sample rate for Opus
+	trackAudioChannels  = 1     // Only mono supported for now
+	trackOutAudioRate   = 16000 // 16KHz is what Whisper requires
+	trackAudioFrameSize = 20    // 20ms is the default Opus frame size for WebRTC
 )
 
 type trackContext struct {
@@ -83,7 +93,7 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 	}
 	defer trackFile.Close()
 
-	oggWriter, err := oggwriter.NewWith(trackFile, 48000, 1)
+	oggWriter, err := oggwriter.NewWith(trackFile, trackInAudioRate, trackAudioChannels)
 	if err != nil {
 		log.Printf("failed to created ogg writer: %s", err)
 		return
@@ -117,10 +127,89 @@ func (t *Transcriber) handleClose(_ any) error {
 
 	log.Printf("live tracks processing done, starting post processing")
 
-	for tCtx := range t.trackCtxs {
-		log.Printf("post processing track: %+v", tCtx)
+	for ctx := range t.trackCtxs {
+		log.Printf("post processing track %s", ctx.trackID)
+
+		if err := ctx.transcribe(); err != nil {
+			log.Printf("failed to transcribe track %q: %s", ctx.trackID, err)
+		}
 	}
 
 	close(t.doneCh)
+	return nil
+}
+
+type trackTimedSamples struct {
+	pcm     []float32
+	startTS int64
+}
+
+func (ctx trackContext) transcribe() error {
+	trackFile, err := os.Open(ctx.filename)
+	defer trackFile.Close()
+
+	if err != nil {
+		return fmt.Errorf("failed to open track file: %w", err)
+	}
+
+	oggReader, _, err := oggreader.NewWith(trackFile)
+	if err != nil {
+		return fmt.Errorf("failed to create new ogg reader: %w", err)
+	}
+
+	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
+	if err != nil {
+		return fmt.Errorf("failed to create opus decoder: %w", err)
+	}
+	defer func() {
+		if err := opusDec.Destroy(); err != nil {
+			log.Printf("failed to destroy decoder: %s", err)
+		}
+	}()
+
+	log.Printf("decoding track %s", ctx.trackID)
+
+	inFrameSize := trackAudioFrameSize * trackInAudioRate / 1000
+	outFrameSize := trackAudioFrameSize * trackOutAudioRate / 1000
+	pcmBuf := make([]float32, outFrameSize)
+
+	// TODO: consider pre-calculating track duration to minimize memory waste.
+	samples := make([]trackTimedSamples, 1)
+
+	var prevGP uint64
+	for {
+		data, hdr, err := oggReader.ParseNextPage()
+		if err == io.EOF {
+			break
+		}
+
+		// Ignoring first page which only contains metadata.
+		if hdr.GranulePosition == 0 {
+			continue
+		}
+
+		if hdr.GranulePosition > prevGP+uint64(inFrameSize) {
+			log.Printf("gap in audio samples")
+			samples = append(samples, trackTimedSamples{
+				startTS: int64(hdr.GranulePosition) / (trackInAudioRate / 1000),
+			})
+		}
+		prevGP = hdr.GranulePosition
+
+		n, err := opusDec.Decode(data, pcmBuf)
+		if err != nil {
+			log.Printf("failed to decode audio data: %s", err)
+		}
+
+		samples[len(samples)-1].pcm = append(samples[len(samples)-1].pcm, pcmBuf[:n]...)
+	}
+
+	for _, ts := range samples {
+		log.Printf("decoded %d samples starting at %v successfully for %s",
+			len(ts.pcm), time.Duration(ts.startTS)*time.Millisecond, ctx.trackID)
+	}
+
+	// pass raw audio samples to whisper
+
 	return nil
 }
