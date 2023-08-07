@@ -4,12 +4,10 @@ go 1.20
 
 require (
 	github.com/mattermost/mattermost/server/public v0.0.6
-	github.com/mattermost/rtcd v0.11.2-0.20230713201408-fd05e9d9a322
+	github.com/mattermost/rtcd v0.11.2-0.20230803213404-668ec74f9dba
 	github.com/pion/webrtc/v3 v3.2.12
 	github.com/stretchr/testify v1.8.4
 )
-
-replace github.com/mattermost/rtcd => ../rtcd
 
 require (
 	github.com/blang/semver v3.5.1+incompatible // indirect
