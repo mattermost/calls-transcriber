@@ -47,7 +47,6 @@ func TestOpusDecode(t *testing.T) {
 }
 
 func BenchmarkOpusDecode(b *testing.B) {
-
 	f, err := os.Open("../../../testfiles/sample.opus")
 	require.NoError(b, err)
 	defer f.Close()

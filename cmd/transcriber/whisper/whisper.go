@@ -1,7 +1,6 @@
 package whisper
 
-// #cgo LDFLAGS: -lwhisper -lm -lstdc++
-// #cgo darwin LDFLAGS: -framework Accelerate
+// #cgo LDFLAGS: -l:libwhisper.a -lm -lstdc++
 // #include <whisper.h>
 // #include <stdlib.h>
 import "C"

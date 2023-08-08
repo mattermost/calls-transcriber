@@ -1,6 +1,6 @@
 package opus
 
-// #cgo pkg-config: opus
+// #cgo LDFLAGS: -l:libopus.a -lm
 // #include <opus.h>
 import "C"
 

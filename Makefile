@@ -27,6 +27,19 @@ MAKEFLAGS     += --warn-undefined-variables
 # App Code location
 CONFIG_APP_CODE         += ./cmd/transcriber
 
+# Operating system arch
+ifneq (, $(shell which go))
+ARCH                    ?= $(shell go version | awk '{print substr($$4,index($$4,"/")+1)}')
+endif
+# Fallback to amd64 if ARCH is still unset.
+ARCH                    ?= amd64
+
+## CGO dependencies
+# Whisper.cpp
+WHISPER_VERSION ?= "1.4.0"
+# Opus
+OPUS_VERSION ?= "1.4"
+
 ## Docker Variables
 # Docker executable
 DOCKER                  := $(shell which docker)
@@ -47,6 +60,11 @@ DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3
 DOCKER_IMAGE_COSIGN     += "bitnami/cosign:1.8.0@sha256:8c2c61c546258fffff18b47bb82a65af6142007306b737129a7bd5429d53629a"
 DOCKER_IMAGE_GH_CLI     += "registry.internal.mattermost.com/images/build-ci:3.16.0@sha256:f6a229a9ababef3c483f237805ee4c3dbfb63f5de4fbbf58f4c4b6ed8fcd34b6"
 
+DOCKER_IMAGE_RUNNER     := "debian:bookworm-slim@sha256:5bbfcb9f36a506f9c9c2fb53205f15f6e9d1f0e032939378ddc049a2d26d651e"
+ifeq ($(ARCH),arm64)
+	DOCKER_IMAGE_RUNNER="arm64v8/debian:bookworm-slim@sha256:593234c0624826b26d7f7f807456dfc615c4d0f748a3ac410fbaf31a0b1d32ff"
+endif
+
 ## Cosign Variables
 # The public key
 COSIGN_PUBLIC_KEY       ?= akey
@@ -66,7 +84,7 @@ GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.bu
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildDate=$(BUILD_DATE)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.goVersion=$(GO_VERSION)"
 # Architectures to build for
-GO_BUILD_PLATFORMS           ?= linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 freebsd-amd64
+GO_BUILD_PLATFORMS           ?= linux-amd64
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))
 # Build options
 GO_BUILD_OPTS                += -mod=readonly -trimpath
@@ -141,9 +159,13 @@ test: go-test ## to test
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
-	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION}
+	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION} for ${ARCH}
 	$(AT)$(DOCKER) build \
 	--build-arg GO_IMAGE=${DOCKER_IMAGE_GO} \
+	--build-arg ARCH=${ARCH} \
+	--build-arg RUNNER_IMAGE=${DOCKER_IMAGE_RUNNER} \
+	--build-arg OPUS_VERSION=${OPUS_VERSION} \
+	--build-arg WHISPER_VERSION=${WHISPER_VERSION} \
 	-f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
@@ -259,7 +281,6 @@ go-build/%:
 	export GOARCH="$${platform#*-}"; \
 	echo export GOOS=$${GOOS}; \
 	echo export GOARCH=$${GOARCH}; \
-	CGO_ENABLED=0 \
 	$(GO) build ${GO_BUILD_OPTS} \
 	-ldflags '${GO_LDFLAGS}' \
 	-o ${GO_OUT_BIN_DIR}/$* \
@@ -273,9 +294,7 @@ go-build-docker: # to build binaries under a controlled docker dedicated go cont
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/sh -c \
-	"cd /app && \
-	make go-build"  || ${FAIL}
+	/bin/bash ./build/build.sh ${OPUS_VERSION} ${WHISPER_VERSION} || ${FAIL}
 	@$(OK) go build docker
 
 .PHONY: go-run
@@ -292,9 +311,7 @@ go-test: ## to run tests
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/sh -c \
-	"cd /app && \
-	go test ${GO_TEST_OPTS} ./... " || ${FAIL}
+	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${WHISPER_VERSION}" || ${FAIL}
 	@$(OK) testing
 
 .PHONY: go-mod-check
@@ -321,7 +338,7 @@ go-lint: ## to lint go code
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
 	${DOCKER_IMAGE_GOLINT} \
-	golangci-lint run ./... || ${FAIL}
+	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${WHISPER_VERSION}" || ${FAIL}
 	@$(OK) App linting
 
 .PHONY: go-fmt
