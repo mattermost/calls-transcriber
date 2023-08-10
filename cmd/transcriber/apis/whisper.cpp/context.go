@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"unsafe"
+
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 )
 
 type Config struct {
@@ -64,4 +66,12 @@ func (c *Context) Destroy() error {
 	C.whisper_free(c.ctx)
 	c.ctx = nil
 	return nil
+}
+
+func (c *Context) Transcribe(samples []float32) (transcribe.Transcription, error) {
+	if len(samples) == 0 {
+		return transcribe.Transcription{}, fmt.Errorf("samples should not be empty")
+	}
+
+	return transcribe.Transcription{}, nil
 }

@@ -26,7 +26,7 @@ docker run --network=host --name calls-transcriber -e "SITE_URL=http://127.0.0.1
 >
 > This process requires:
 >  - Mattermost Server >= v7.8
->  - Mattermost Calls >= v0.18.0
+>  - Mattermost Calls >= v0.19.0
 
 > **_Note_**
 > - `SITE_URL`: The URL pointing to the Mattermost installation.

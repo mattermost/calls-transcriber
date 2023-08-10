@@ -46,7 +46,7 @@ func TestNewContext(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		ctx, err := NewContext(Config{
-			ModelFile: "../../../models/ggml-tiny.en.bin",
+			ModelFile: "../../../../models/ggml-tiny.en.bin",
 		})
 		require.NoError(t, err)
 		require.NotNil(t, ctx)
@@ -57,7 +57,7 @@ func TestNewContext(t *testing.T) {
 
 	t.Run("destroy", func(t *testing.T) {
 		ctx, err := NewContext(Config{
-			ModelFile: "../../../models/ggml-tiny.en.bin",
+			ModelFile: "../../../../models/ggml-tiny.en.bin",
 		})
 		require.NoError(t, err)
 		require.NotNil(t, ctx)

@@ -1,4 +1,4 @@
-package main
+package call
 
 import (
 	"errors"
@@ -9,7 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/whisper.cpp"
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/opus"
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/rtcd/client"
@@ -130,7 +133,7 @@ func (t *Transcriber) handleClose(_ any) error {
 	for ctx := range t.trackCtxs {
 		log.Printf("post processing track %s", ctx.trackID)
 
-		if err := ctx.transcribe(); err != nil {
+		if err := t.transcribe(ctx); err != nil {
 			log.Printf("failed to transcribe track %q: %s", ctx.trackID, err)
 		}
 	}
@@ -144,7 +147,7 @@ type trackTimedSamples struct {
 	startTS int64
 }
 
-func (ctx trackContext) transcribe() error {
+func (t *Transcriber) transcribe(ctx trackContext) error {
 	trackFile, err := os.Open(ctx.filename)
 	defer trackFile.Close()
 
@@ -209,7 +212,25 @@ func (ctx trackContext) transcribe() error {
 			len(ts.pcm), time.Duration(ts.startTS)*time.Millisecond, ctx.trackID)
 	}
 
-	// pass raw audio samples to whisper
+	transcriber, err := t.newTrackTranscriber()
+	if err != nil {
+		return fmt.Errorf("failed to create track transcriber: %w", err)
+	}
+
+	if err := transcriber.Destroy(); err != nil {
+		return fmt.Errorf("failed to destroy track transcriber: %w", err)
+	}
 
 	return nil
+}
+
+func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
+	switch t.cfg.TranscribeAPI {
+	case config.TranscribeAPIWhisperCPP:
+		return whisper.NewContext(whisper.Config{
+			ModelFile: filepath.Join("./models", fmt.Sprintf("ggml-%s.en.bin", string(t.cfg.ModelSize))),
+		})
+	default:
+		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)
+	}
 }

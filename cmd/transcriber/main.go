@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/call"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 )
 
@@ -24,9 +25,9 @@ func main() {
 	}
 	cfg.SetDefaults()
 
-	transcriber, err := NewTranscriber(cfg)
+	transcriber, err := call.NewTranscriber(cfg)
 	if err != nil {
-		log.Fatalf("failed to create transcriber: %s", err)
+		log.Fatalf("failed to create call transcriber: %s", err)
 	}
 
 	log.Printf("starting transcriber")

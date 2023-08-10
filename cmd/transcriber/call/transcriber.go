@@ -1,4 +1,4 @@
-package main
+package call
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ const (
 )
 
 type Transcriber struct {
-	cfg config.TranscriberConfig
+	cfg config.CallTranscriberConfig
 
 	client    *client.Client
 	apiClient *model.Client4
@@ -26,7 +26,7 @@ type Transcriber struct {
 	trackCtxs    chan trackContext
 }
 
-func NewTranscriber(cfg config.TranscriberConfig) (*Transcriber, error) {
+func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
