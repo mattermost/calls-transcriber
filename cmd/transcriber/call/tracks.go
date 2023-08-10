@@ -133,7 +133,7 @@ func (t *Transcriber) handleClose(_ any) error {
 	for ctx := range t.trackCtxs {
 		log.Printf("post processing track %s", ctx.trackID)
 
-		if err := t.transcribe(ctx); err != nil {
+		if err := t.transcribeTrack(ctx); err != nil {
 			log.Printf("failed to transcribe track %q: %s", ctx.trackID, err)
 		}
 	}
@@ -147,22 +147,22 @@ type trackTimedSamples struct {
 	startTS int64
 }
 
-func (t *Transcriber) transcribe(ctx trackContext) error {
+func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	trackFile, err := os.Open(ctx.filename)
 	defer trackFile.Close()
 
 	if err != nil {
-		return fmt.Errorf("failed to open track file: %w", err)
+		return nil, fmt.Errorf("failed to open track file: %w", err)
 	}
 
 	oggReader, _, err := oggreader.NewWith(trackFile)
 	if err != nil {
-		return fmt.Errorf("failed to create new ogg reader: %w", err)
+		return nil, fmt.Errorf("failed to create new ogg reader: %w", err)
 	}
 
 	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
 	if err != nil {
-		return fmt.Errorf("failed to create opus decoder: %w", err)
+		return nil, fmt.Errorf("failed to create opus decoder: %w", err)
 	}
 	defer func() {
 		if err := opusDec.Destroy(); err != nil {
@@ -205,6 +205,15 @@ func (t *Transcriber) transcribe(ctx trackContext) error {
 		}
 
 		samples[len(samples)-1].pcm = append(samples[len(samples)-1].pcm, pcmBuf[:n]...)
+	}
+
+	return samples, nil
+}
+
+func (t *Transcriber) transcribeTrack(ctx trackContext) error {
+	samples, err := ctx.decodeAudio()
+	if err != nil {
+		return fmt.Errorf("failed to decode audio samples: %w", err)
 	}
 
 	for _, ts := range samples {
