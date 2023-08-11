@@ -89,14 +89,7 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		t.liveTracksWg.Done()
 	}()
 
-	trackFile, err := os.OpenFile(ctx.filename, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		log.Printf("failed to open track file for writing: %s", err)
-		return
-	}
-	defer trackFile.Close()
-
-	oggWriter, err := oggwriter.NewWith(trackFile, trackInAudioRate, trackAudioChannels)
+	oggWriter, err := oggwriter.New(ctx.filename, trackInAudioRate, trackAudioChannels)
 	if err != nil {
 		log.Printf("failed to created ogg writer: %s", err)
 		return
