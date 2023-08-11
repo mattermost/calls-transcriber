@@ -10,7 +10,7 @@ import (
 )
 
 func TestOpusDecode(t *testing.T) {
-	f, err := os.Open("../../../testfiles/sample.opus")
+	f, err := os.Open("../../../tracks/srn9te5wnifg98ekrurcr7ty8c_wdsrwk495bf19etxa3sg7ett7r.ogg")
 	require.NoError(t, err)
 	defer f.Close()
 

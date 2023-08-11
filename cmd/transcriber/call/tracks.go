@@ -130,13 +130,22 @@ func (t *Transcriber) handleClose(_ any) error {
 
 	log.Printf("live tracks processing done, starting post processing")
 
+	var tr transcribe.Transcription
 	for ctx := range t.trackCtxs {
 		log.Printf("post processing track %s", ctx.trackID)
 
-		if err := t.transcribeTrack(ctx); err != nil {
+		trackTr, err := t.transcribeTrack(ctx)
+		if err != nil {
 			log.Printf("failed to transcribe track %q: %s", ctx.trackID, err)
+			continue
 		}
+
+		tr = append(tr, trackTr)
 	}
+
+	log.Printf("transcription process completed for all tracks")
+
+	log.Printf(tr.WebVTT())
 
 	close(t.doneCh)
 	return nil
@@ -182,8 +191,12 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	var prevGP uint64
 	for {
 		data, hdr, err := oggReader.ParseNextPage()
-		if err == io.EOF {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			log.Printf("failed to parse off page: %s", err)
+			continue
 		}
 
 		// Ignoring first page which only contains metadata.
@@ -210,10 +223,14 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	return samples, nil
 }
 
-func (t *Transcriber) transcribeTrack(ctx trackContext) error {
+func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscription, error) {
+	trackTr := transcribe.TrackTranscription{
+		Speaker: ctx.user.GetDisplayName(model.ShowFullName),
+	}
+
 	samples, err := ctx.decodeAudio()
 	if err != nil {
-		return fmt.Errorf("failed to decode audio samples: %w", err)
+		return trackTr, fmt.Errorf("failed to decode audio samples: %w", err)
 	}
 
 	for _, ts := range samples {
@@ -223,21 +240,38 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) error {
 
 	transcriber, err := t.newTrackTranscriber()
 	if err != nil {
-		return fmt.Errorf("failed to create track transcriber: %w", err)
+		return trackTr, fmt.Errorf("failed to create track transcriber: %w", err)
+	}
+
+	for _, ts := range samples {
+		start := time.Now()
+		segments, err := transcriber.Transcribe(ts.pcm)
+		if err != nil {
+			log.Printf("failed to transcribe audio samples: %s", err)
+			continue
+		}
+		log.Printf("transcribed %v worth of audio in %v", float64(len(ts.pcm))/float64(trackOutAudioRate), time.Since(start))
+
+		for _, s := range segments {
+			s.StartTS += ts.startTS
+			s.EndTS += ts.startTS
+			trackTr.Segments = append(trackTr.Segments, s)
+		}
 	}
 
 	if err := transcriber.Destroy(); err != nil {
-		return fmt.Errorf("failed to destroy track transcriber: %w", err)
+		return trackTr, fmt.Errorf("failed to destroy track transcriber: %w", err)
 	}
 
-	return nil
+	return trackTr, nil
 }
 
 func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
-			ModelFile: filepath.Join("./models", fmt.Sprintf("ggml-%s.en.bin", string(t.cfg.ModelSize))),
+			ModelFile:  filepath.Join("./models", fmt.Sprintf("ggml-%s.en.bin", string(t.cfg.ModelSize))),
+			NumThreads: 1,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)
