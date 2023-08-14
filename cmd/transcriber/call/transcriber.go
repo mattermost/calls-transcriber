@@ -3,6 +3,7 @@ package call
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 
@@ -24,6 +25,7 @@ type Transcriber struct {
 	doneCh       chan struct{}
 	liveTracksWg sync.WaitGroup
 	trackCtxs    chan trackContext
+	startTime    time.Time
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
@@ -53,6 +55,15 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 }
 
 func (t *Transcriber) Start() error {
+	t.client.On(client.RTCConnectEvent, func(_ any) error {
+		if t.startTime.IsZero() {
+			// TODO: If we want to have the final transcription in sync with the recording
+			// we need to set the startTime to the time the recording job has started
+			// processing (TBD).
+			t.startTime = time.Now()
+		}
+		return nil
+	})
 	t.client.On(client.RTCTrackEvent, t.handleTrack)
 	t.client.On(client.CloseEvent, t.handleClose)
 

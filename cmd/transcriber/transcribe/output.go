@@ -50,7 +50,7 @@ func (t Transcription) WebVTT() string {
 	ns := t.interleave()
 	for _, s := range ns {
 		fmt.Fprintf(&b, "%s --> %s\n", vttTS(s.StartTS), vttTS(s.EndTS))
-		fmt.Fprintf(&b, "<v %s> %s\n\n", s.Speaker, s.Text)
+		fmt.Fprintf(&b, "<v %s>%s\n\n", s.Speaker, s.Text)
 	}
 	return b.String()
 }
