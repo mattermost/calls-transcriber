@@ -33,13 +33,15 @@ const (
 )
 
 type trackContext struct {
-	trackID     string
-	sessionID   string
-	filename    string
-	startOffset int64
-	user        *model.User
+	trackID   string
+	sessionID string
+	filename  string
+	startTS   int64
+	user      *model.User
 }
 
+// handleTrack gets called whenever a new WebRTC track is received (e.g. someone unmuted
+// for the first time). As soon as this happens we start processing the track.
 func (t *Transcriber) handleTrack(ctx any) error {
 	track, ok := ctx.(*webrtc.TrackRemote)
 	if !ok {
@@ -72,6 +74,9 @@ func (t *Transcriber) handleTrack(ctx any) error {
 	return nil
 }
 
+// processLiveTrack saves the content of a voice track to a file for later processing.
+// This involves muxing the raw Opus packets into a OGG file with the
+// timings adjusted to account for any potential gaps due to mute/unmute sequences.
 func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID string, user *model.User) {
 	ctx := trackContext{
 		trackID:   track.ID(),
@@ -111,9 +116,9 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		}
 
 		var gap uint64
-		if ctx.startOffset == 0 {
-			ctx.startOffset = time.Since(t.startTime).Milliseconds()
-			log.Printf("start offset for track is %v", time.Duration(ctx.startOffset)*time.Millisecond)
+		if ctx.startTS == 0 {
+			ctx.startTS = time.Since(t.startTime).Milliseconds()
+			log.Printf("start offset for track is %v", time.Duration(ctx.startTS)*time.Millisecond)
 		} else if receiveGap := time.Since(prevArrivalTime); receiveGap > audioGapThreshold {
 			// If the last received audio packet was more than a audioGapThreshold
 			// ago we may need to fix the RTP timestamp as some clients (e.g. Firefox) will
@@ -147,6 +152,7 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 	}
 }
 
+// handleClose will kick off post-processing of saved voice tracks.
 func (t *Transcriber) handleClose(_ any) error {
 	log.Printf("handleClose")
 
@@ -181,11 +187,16 @@ func (t *Transcriber) handleClose(_ any) error {
 	return nil
 }
 
+// trackTimedSamples is used to account for potential gaps in
+// voice tracks due to mute/unmute sequences. Each spoken segment
+// will have a relative time offset (startTS).
 type trackTimedSamples struct {
 	pcm     []float32
 	startTS int64
 }
 
+// decodeAudio reads a track OGG file and decodes its audio into raw PCM samples
+// for later processing.
 func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	trackFile, err := os.Open(ctx.filename)
 	defer trackFile.Close()
@@ -250,6 +261,8 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	return samples, nil
 }
 
+// transcribeTrack feeds track's raw audio samples to a transcription engine (e.g. whisper)
+// and outputs a transcription.
 func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscription, time.Duration, error) {
 	trackTr := transcribe.TrackTranscription{
 		Speaker: ctx.user.GetDisplayName(model.ShowFullName),
@@ -276,8 +289,8 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 		totalDur += time.Duration(len(ts.pcm)/trackOutFrameSize*trackAudioFrameSizeMs) * time.Millisecond
 
 		for _, s := range segments {
-			s.StartTS += ts.startTS + ctx.startOffset
-			s.EndTS += ts.startTS + ctx.startOffset
+			s.StartTS += ts.startTS + ctx.startTS
+			s.EndTS += ts.startTS + ctx.startTS
 			trackTr.Segments = append(trackTr.Segments, s)
 		}
 	}
