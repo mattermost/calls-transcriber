@@ -19,6 +19,8 @@ type Config struct {
 	ModelFile string
 	// The number of system threads to use to perform the transcription.
 	NumThreads int
+	// Whether or not past transcription should be used as prompt.
+	NoContext bool
 }
 
 func (c Config) IsValid() error {
@@ -30,20 +32,21 @@ func (c Config) IsValid() error {
 		return fmt.Errorf("invalid ModelFile: should not be empty")
 	}
 
-	if numCPU := runtime.NumCPU(); c.NumThreads == 0 || c.NumThreads > numCPU {
-		return fmt.Errorf("invalid NumThreads: should be in the range [1, %d]", numCPU)
-	}
-
 	if _, err := os.Stat(c.ModelFile); err != nil {
 		return fmt.Errorf("invalid ModelFile: failed to stat model file: %w", err)
+	}
+
+	if numCPU := runtime.NumCPU(); c.NumThreads == 0 || c.NumThreads > numCPU {
+		return fmt.Errorf("invalid NumThreads: should be in the range [1, %d]", numCPU)
 	}
 
 	return nil
 }
 
 type Context struct {
-	cfg Config
-	ctx *C.struct_whisper_context
+	cfg    Config
+	ctx    *C.struct_whisper_context
+	params C.struct_whisper_full_params
 }
 
 func NewContext(cfg Config) (*Context, error) {
@@ -64,6 +67,10 @@ func NewContext(cfg Config) (*Context, error) {
 		return nil, fmt.Errorf("failed to load model file")
 	}
 
+	c.params = C.whisper_full_default_params(C.WHISPER_SAMPLING_GREEDY)
+	c.params.no_context = C.bool(c.cfg.NoContext)
+	c.params.n_threads = C.int(c.cfg.NumThreads)
+
 	return &c, nil
 }
 
@@ -81,13 +88,7 @@ func (c *Context) Transcribe(samples []float32) ([]transcribe.Segment, error) {
 		return nil, fmt.Errorf("samples should not be empty")
 	}
 
-	params := C.whisper_full_default_params(C.WHISPER_SAMPLING_GREEDY)
-	params.no_context = C.bool(false)
-	params.n_threads = C.int(c.cfg.NumThreads)
-	params.max_len = C.int(8)
-	params.split_on_word = C.bool(true)
-
-	ret := C.whisper_full(c.ctx, params, (*C.float)(&samples[0]), C.int(len(samples)))
+	ret := C.whisper_full(c.ctx, c.params, (*C.float)(&samples[0]), C.int(len(samples)))
 	if ret != 0 {
 		return nil, fmt.Errorf("whisper_full failed with code %d", ret)
 	}
