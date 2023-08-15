@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -31,4 +32,11 @@ func (t *Transcriber) getUserForSession(sessionID string) (*model.User, error) {
 	}
 
 	return user, nil
+}
+
+func getDataDir() string {
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		return dir
+	}
+	return dataDir
 }

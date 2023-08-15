@@ -1,6 +1,7 @@
 package transcribe
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -200,5 +201,90 @@ func TestInterleave(t *testing.T) {
 			},
 		}
 		require.Equal(t, ns, tr.interleave())
+	})
+}
+
+func TestWebVTT(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		var tr Transcription
+		var b strings.Builder
+		err := tr.WebVTT(&b)
+		require.NoError(t, err)
+		require.Equal(t, "WEBVTT\n", b.String())
+	})
+
+	t.Run("full", func(t *testing.T) {
+		tr := Transcription{
+			TrackTranscription{
+				Speaker: "SpeakerA",
+				Segments: []Segment{
+					{
+						StartTS: 0,
+						EndTS:   1000,
+						Text:    "A1",
+					},
+					{
+						StartTS: 2000,
+						EndTS:   3000,
+						Text:    "A2",
+					},
+				},
+			},
+			TrackTranscription{
+				Speaker: "SpeakerA",
+				Segments: []Segment{
+					{
+						StartTS: 4000,
+						EndTS:   5000,
+						Text:    "A3",
+					},
+					{
+						StartTS: 5000,
+						EndTS:   6000,
+						Text:    "A4",
+					},
+				},
+			},
+			TrackTranscription{
+				Speaker: "SpeakerB",
+				Segments: []Segment{
+					{
+						StartTS: 3000,
+						EndTS:   4000,
+						Text:    "B1",
+					},
+					{
+						StartTS: 6000,
+						EndTS:   7000,
+						Text:    "B2",
+					},
+				},
+			},
+		}
+
+		var b strings.Builder
+		expected := `WEBVTT
+
+00:00:00.000 --> 00:00:01.000
+<v SpeakerA>A1
+
+00:00:02.000 --> 00:00:03.000
+<v SpeakerA>A2
+
+00:00:03.000 --> 00:00:04.000
+<v SpeakerB>B1
+
+00:00:04.000 --> 00:00:05.000
+<v SpeakerA>A3
+
+00:00:05.000 --> 00:00:06.000
+<v SpeakerA>A4
+
+00:00:06.000 --> 00:00:07.000
+<v SpeakerB>B2
+`
+		err := tr.WebVTT(&b)
+		require.NoError(t, err)
+		require.Equal(t, expected, b.String())
 	})
 }

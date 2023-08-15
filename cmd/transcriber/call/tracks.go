@@ -30,6 +30,8 @@ const (
 	trackInFrameSize         = trackAudioFrameSizeMs * trackInAudioRate / 1000  // The input frame size in samples
 	trackOutFrameSize        = trackAudioFrameSizeMs * trackOutAudioRate / 1000 // The output frame size in samples
 	audioGapThreshold        = time.Second                                      // The amount of time after which we detect a gap in the audio track.
+
+	dataDir = "/data"
 )
 
 type trackContext struct {
@@ -82,7 +84,7 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		trackID:   track.ID(),
 		sessionID: sessionID,
 		user:      user,
-		filename:  filepath.Join("tracks", fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)),
+		filename:  filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)),
 	}
 
 	log.Printf("processing voice track of %s", user.Username)
@@ -156,6 +158,8 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 func (t *Transcriber) handleClose(_ any) error {
 	log.Printf("handleClose")
 
+	defer close(t.doneCh)
+
 	t.liveTracksWg.Wait()
 	close(t.trackCtxs)
 
@@ -179,11 +183,19 @@ func (t *Transcriber) handleClose(_ any) error {
 	}
 
 	dur := time.Since(start)
-	log.Printf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx", samplesDur, dur, samplesDur.Seconds()/dur.Seconds())
+	log.Printf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx",
+		samplesDur, dur, samplesDur.Seconds()/dur.Seconds())
 
-	log.Printf(tr.WebVTT())
+	f, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.vtt",
+		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
 
-	close(t.doneCh)
+	if err := tr.WebVTT(f); err != nil {
+		return fmt.Errorf("failed to write WebVTT file: %w", err)
+	}
+
 	return nil
 }
 

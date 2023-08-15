@@ -2,8 +2,8 @@ package transcribe
 
 import (
 	"fmt"
+	"io"
 	"sort"
-	"strings"
 )
 
 type namedSegment struct {
@@ -44,13 +44,21 @@ func (t Transcription) interleave() []namedSegment {
 	return nss
 }
 
-func (t Transcription) WebVTT() string {
-	var b strings.Builder
-	b.WriteString("WEBVTT\n\n")
-	ns := t.interleave()
-	for _, s := range ns {
-		fmt.Fprintf(&b, "%s --> %s\n", vttTS(s.StartTS), vttTS(s.EndTS))
-		fmt.Fprintf(&b, "<v %s>%s\n\n", s.Speaker, s.Text)
+func (t Transcription) WebVTT(w io.Writer) error {
+	_, err := fmt.Fprintf(w, "WEBVTT\n")
+	if err != nil {
+		return fmt.Errorf("failed to write: %w", err)
 	}
-	return b.String()
+	for _, s := range t.interleave() {
+		_, err = fmt.Fprintf(w, "\n%s --> %s\n", vttTS(s.StartTS), vttTS(s.EndTS))
+		if err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+		_, err = fmt.Fprintf(w, "<v %s>%s\n", s.Speaker, s.Text)
+		if err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+	}
+
+	return nil
 }
