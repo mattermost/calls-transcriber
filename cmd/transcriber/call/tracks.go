@@ -154,21 +154,26 @@ func (t *Transcriber) handleClose(_ any) error {
 	close(t.trackCtxs)
 
 	log.Printf("live tracks processing done, starting post processing")
+	start := time.Now()
 
+	var samplesDur time.Duration
 	var tr transcribe.Transcription
 	for ctx := range t.trackCtxs {
 		log.Printf("post processing track %s", ctx.trackID)
 
-		trackTr, err := t.transcribeTrack(ctx)
+		trackTr, dur, err := t.transcribeTrack(ctx)
 		if err != nil {
 			log.Printf("failed to transcribe track %q: %s", ctx.trackID, err)
 			continue
 		}
 
+		samplesDur += dur
+
 		tr = append(tr, trackTr)
 	}
 
-	log.Printf("transcription process completed for all tracks")
+	dur := time.Since(start)
+	log.Printf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx", samplesDur, dur, samplesDur.Seconds()/dur.Seconds())
 
 	log.Printf(tr.WebVTT())
 
@@ -245,48 +250,43 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	return samples, nil
 }
 
-func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscription, error) {
+func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscription, time.Duration, error) {
 	trackTr := transcribe.TrackTranscription{
 		Speaker: ctx.user.GetDisplayName(model.ShowFullName),
 	}
 
 	samples, err := ctx.decodeAudio()
 	if err != nil {
-		return trackTr, fmt.Errorf("failed to decode audio samples: %w", err)
-	}
-
-	for _, ts := range samples {
-		log.Printf("decoded %d samples starting at %v successfully for %s",
-			len(ts.pcm), time.Duration(ts.startTS+ctx.startOffset)*time.Millisecond, ctx.trackID)
+		return trackTr, 0, fmt.Errorf("failed to decode audio samples: %w", err)
 	}
 
 	transcriber, err := t.newTrackTranscriber()
 	if err != nil {
-		return trackTr, fmt.Errorf("failed to create track transcriber: %w", err)
+		return trackTr, 0, fmt.Errorf("failed to create track transcriber: %w", err)
 	}
 
+	var totalDur time.Duration
 	for _, ts := range samples {
-		start := time.Now()
 		segments, err := transcriber.Transcribe(ts.pcm)
 		if err != nil {
 			log.Printf("failed to transcribe audio samples: %s", err)
 			continue
 		}
-		log.Printf("transcribed %vs worth of audio in %v", float64(len(ts.pcm))/float64(trackOutAudioRate), time.Since(start))
+
+		totalDur += time.Duration(len(ts.pcm)/trackOutFrameSize*trackAudioFrameSizeMs) * time.Millisecond
 
 		for _, s := range segments {
 			s.StartTS += ts.startTS + ctx.startOffset
 			s.EndTS += ts.startTS + ctx.startOffset
 			trackTr.Segments = append(trackTr.Segments, s)
-			log.Printf("%v --> %v %s", time.Duration(s.StartTS)*time.Millisecond, time.Duration(s.EndTS)*time.Millisecond, s.Text)
 		}
 	}
 
 	if err := transcriber.Destroy(); err != nil {
-		return trackTr, fmt.Errorf("failed to destroy track transcriber: %w", err)
+		return trackTr, 0, fmt.Errorf("failed to destroy track transcriber: %w", err)
 	}
 
-	return trackTr, nil
+	return trackTr, totalDur, nil
 }
 
 func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
