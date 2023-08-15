@@ -32,7 +32,8 @@ const (
 	trackOutFrameSize         = trackAudioFrameSizeMs * trackOutAudioRate / 1000 // The output frame size in samples
 	audioGapThreshold         = time.Second                                      // The amount of time after which we detect a gap in the audio track.
 
-	dataDir = "/data"
+	dataDir   = "/data"
+	modelsDir = "/models"
 )
 
 type trackContext struct {
@@ -331,7 +332,7 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
-			ModelFile:  filepath.Join("./models", fmt.Sprintf("ggml-%s.en.bin", string(t.cfg.ModelSize))),
+			ModelFile:  filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.en.bin", string(t.cfg.ModelSize))),
 			NumThreads: 1,
 		})
 	default:

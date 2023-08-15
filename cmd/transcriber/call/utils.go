@@ -46,6 +46,13 @@ func getDataDir() string {
 	return dataDir
 }
 
+func getModelsDir() string {
+	if dir := os.Getenv("MODELS_DIR"); dir != "" {
+		return dir
+	}
+	return modelsDir
+}
+
 func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 	if _, err := f.Seek(0, 0); err != nil {
 		return fmt.Errorf("failed to seek: %w", err)

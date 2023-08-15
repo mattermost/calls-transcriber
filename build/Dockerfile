@@ -25,11 +25,13 @@ ARG GO_BUILD_PLATFORMS=linux-${ARCH:?}
 COPY . /src
 WORKDIR /src
 
-RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${WHISPER_VERSION}
+RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${WHISPER_VERSION} "tiny base small"
 
 FROM base AS runner
 ARG ARCH
+ARG WHISPER_VERSION
 COPY --from=builder /src/dist/calls-transcriber-linux-${ARCH:?} /opt/calls-transcriber/bin/calls-transcriber
+COPY --from=builder /tmp/whisper.cpp-${WHISPER_VERSION}/models /models
 
 USER calls
 
