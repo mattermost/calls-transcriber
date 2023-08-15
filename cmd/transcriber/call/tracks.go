@@ -22,14 +22,15 @@ import (
 )
 
 const (
-	trackInAudioRate         = 48000                                            // Default sample rate for Opus
-	trackAudioChannels       = 1                                                // Only mono supported for now
-	trackOutAudioRate        = 16000                                            // 16KHz is what Whisper requires
-	trackInAudioSamplesPerMs = trackInAudioRate / 1000                          // Number of audio samples per ms
-	trackAudioFrameSizeMs    = 20                                               // 20ms is the default Opus frame size for WebRTC
-	trackInFrameSize         = trackAudioFrameSizeMs * trackInAudioRate / 1000  // The input frame size in samples
-	trackOutFrameSize        = trackAudioFrameSizeMs * trackOutAudioRate / 1000 // The output frame size in samples
-	audioGapThreshold        = time.Second                                      // The amount of time after which we detect a gap in the audio track.
+	trackInAudioRate          = 48000                                            // Default sample rate for Opus
+	trackAudioChannels        = 1                                                // Only mono supported for now
+	trackOutAudioRate         = 16000                                            // 16KHz is what Whisper requires
+	trackInAudioSamplesPerMs  = trackInAudioRate / 1000                          // Number of audio samples per ms
+	trackOutAudioSamplesPerMs = trackOutAudioRate / 1000                         // Number of audio samples per ms
+	trackAudioFrameSizeMs     = 20                                               // 20ms is the default Opus frame size for WebRTC
+	trackInFrameSize          = trackAudioFrameSizeMs * trackInAudioRate / 1000  // The input frame size in samples
+	trackOutFrameSize         = trackAudioFrameSizeMs * trackOutAudioRate / 1000 // The output frame size in samples
+	audioGapThreshold         = time.Second                                      // The amount of time after which we detect a gap in the audio track.
 
 	dataDir = "/data"
 )
@@ -305,7 +306,8 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 			continue
 		}
 
-		totalDur += time.Duration(len(ts.pcm)/trackOutFrameSize*trackAudioFrameSizeMs) * time.Millisecond
+		samplesDur := time.Duration(len(ts.pcm)/trackOutAudioSamplesPerMs) * time.Millisecond
+		totalDur += samplesDur
 
 		for _, s := range segments {
 			s.StartTS += ts.startTS + ctx.startTS
