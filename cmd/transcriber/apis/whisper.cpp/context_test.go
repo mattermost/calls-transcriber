@@ -1,6 +1,9 @@
 package whisper
 
 import (
+	"encoding/binary"
+	"math"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -77,4 +80,29 @@ func TestNewContext(t *testing.T) {
 		err = ctx.Destroy()
 		require.EqualError(t, err, "context is not initialized")
 	})
+}
+
+func TestTranscribe(t *testing.T) {
+	ctx, err := NewContext(Config{
+		NumThreads: 1,
+		ModelFile:  "../../../../models/ggml-tiny.en.bin",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, ctx)
+
+	data, err := os.ReadFile("../../../../testfiles/sample.pcm")
+	require.NoError(t, err)
+
+	samples := make([]float32, 0, len(data)/4)
+	for i := 0; i < len(data); i += 4 {
+		samples = append(samples, math.Float32frombits(binary.LittleEndian.Uint32(data[i:i+4])))
+	}
+
+	segments, err := ctx.Transcribe(samples)
+	require.NoError(t, err)
+	require.NotEmpty(t, segments)
+	require.Equal(t, " This is a test transcription sample.", segments[0].Text)
+
+	err = ctx.Destroy()
+	require.NoError(t, err)
 }
