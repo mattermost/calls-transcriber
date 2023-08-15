@@ -1,0 +1,5 @@
+# binaries
+dist/
+
+.config.env*
+*.vim
