@@ -37,6 +37,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 		SiteURL:   cfg.SiteURL,
 		AuthToken: cfg.AuthToken,
 		ChannelID: cfg.CallID,
+		ContextID: cfg.TranscriptionID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create calls client: %w", err)

@@ -42,10 +42,11 @@ const (
 
 type CallTranscriberConfig struct {
 	// input config
-	SiteURL   string
-	CallID    string
-	ThreadID  string
-	AuthToken string
+	SiteURL         string
+	CallID          string
+	ThreadID        string
+	AuthToken       string
+	TranscriptionID string
 
 	// output config
 	TranscribeAPI TranscribeAPI
@@ -106,6 +107,12 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("AuthToken parsing failed")
 	}
 
+	if cfg.TranscriptionID == "" {
+		return fmt.Errorf("TranscriptionID cannot be empty")
+	} else if !idRE.MatchString(cfg.TranscriptionID) {
+		return fmt.Errorf("TranscriptionID parsing failed")
+	}
+
 	if !cfg.TranscribeAPI.IsValid() {
 		return fmt.Errorf("TranscribeAPI value is not valid")
 	}
@@ -139,6 +146,7 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("CALL_ID=%s", cfg.CallID),
 		fmt.Sprintf("THREAD_ID=%s", cfg.ThreadID),
 		fmt.Sprintf("AUTH_TOKEN=%s", cfg.AuthToken),
+		fmt.Sprintf("TRANSCRIPTION_ID=%s", cfg.TranscriptionID),
 		fmt.Sprintf("TRANSCRIBE_API=%s", cfg.TranscribeAPI),
 		fmt.Sprintf("MODEL_SIZE=%s", cfg.ModelSize),
 		fmt.Sprintf("OUTPUT_FORMAT=%s", cfg.OutputFormat),
@@ -147,13 +155,14 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 
 func (cfg CallTranscriberConfig) ToMap() map[string]any {
 	return map[string]any{
-		"site_url":       cfg.SiteURL,
-		"call_id":        cfg.CallID,
-		"thread_id":      cfg.ThreadID,
-		"auth_token":     cfg.AuthToken,
-		"transcribe_api": cfg.TranscribeAPI,
-		"model_size":     cfg.ModelSize,
-		"output_format":  cfg.OutputFormat,
+		"site_url":         cfg.SiteURL,
+		"call_id":          cfg.CallID,
+		"thread_id":        cfg.ThreadID,
+		"auth_token":       cfg.AuthToken,
+		"transcription_id": cfg.TranscriptionID,
+		"transcribe_api":   cfg.TranscribeAPI,
+		"model_size":       cfg.ModelSize,
+		"output_format":    cfg.OutputFormat,
 	}
 }
 
@@ -162,6 +171,7 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	cfg.CallID, _ = m["call_id"].(string)
 	cfg.ThreadID, _ = m["thread_id"].(string)
 	cfg.AuthToken, _ = m["auth_token"].(string)
+	cfg.TranscriptionID, _ = m["transcription_id"].(string)
 	if api, ok := m["transcribe_api"].(string); ok {
 		cfg.TranscribeAPI = TranscribeAPI(api)
 	} else {
@@ -186,6 +196,7 @@ func LoadFromEnv() (CallTranscriberConfig, error) {
 	cfg.CallID = os.Getenv("CALL_ID")
 	cfg.ThreadID = os.Getenv("THREAD_ID")
 	cfg.AuthToken = os.Getenv("AUTH_TOKEN")
+	cfg.TranscriptionID = os.Getenv("TRANSCRIPTION_ID")
 
 	if val := os.Getenv("TRANSCRIBE_API"); val != "" {
 		cfg.TranscribeAPI = TranscribeAPI(val)

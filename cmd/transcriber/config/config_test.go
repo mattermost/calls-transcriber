@@ -51,49 +51,63 @@ func TestConfigIsValid(t *testing.T) {
 			expectedError: "AuthToken cannot be empty",
 		},
 		{
-			name: "invalid TranscribeAPI",
+			name: "missing TranscriptionID",
 			cfg: CallTranscriberConfig{
 				SiteURL:   "http://localhost:8065",
 				CallID:    "8w8jorhr7j83uqr6y1st894hqe",
 				ThreadID:  "udzdsg7dwidbzcidx5khrf8nee",
 				AuthToken: "qj75unbsef83ik9p7ueypb6iyw",
 			},
+			expectedError: "TranscriptionID cannot be empty",
+		},
+		{
+			name: "invalid TranscribeAPI",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+			},
 			expectedError: "TranscribeAPI value is not valid",
 		},
 		{
 			name: "invalid ModelSize",
 			cfg: CallTranscriberConfig{
-				SiteURL:       "http://localhost:8065",
-				CallID:        "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:      "udzdsg7dwidbzcidx5khrf8nee",
-				AuthToken:     "qj75unbsef83ik9p7ueypb6iyw",
-				TranscribeAPI: TranscribeAPIDefault,
-				OutputFormat:  OutputFormatVTT,
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				OutputFormat:    OutputFormatVTT,
 			},
 			expectedError: "ModelSize value is not valid",
 		},
 		{
 			name: "invalid OutputFormat",
 			cfg: CallTranscriberConfig{
-				SiteURL:       "http://localhost:8065",
-				CallID:        "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:      "udzdsg7dwidbzcidx5khrf8nee",
-				AuthToken:     "qj75unbsef83ik9p7ueypb6iyw",
-				TranscribeAPI: TranscribeAPIDefault,
-				ModelSize:     ModelSizeMedium,
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
 			},
 			expectedError: "OutputFormat value is not valid",
 		},
 		{
 			name: "valid config",
 			cfg: CallTranscriberConfig{
-				SiteURL:       "http://localhost:8065",
-				CallID:        "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:      "udzdsg7dwidbzcidx5khrf8nee",
-				AuthToken:     "qj75unbsef83ik9p7ueypb6iyw",
-				TranscribeAPI: TranscribeAPIDefault,
-				ModelSize:     ModelSizeMedium,
-				OutputFormat:  OutputFormatVTT,
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
 			},
 		},
 	}
@@ -150,6 +164,8 @@ func TestLoadFromEnv(t *testing.T) {
 		defer os.Unsetenv("THREAD_ID")
 		os.Setenv("AUTH_TOKEN", "qj75unbsef83ik9p7ueypb6iyw")
 		defer os.Unsetenv("AUTH_TOKEN")
+		os.Setenv("TRANSCRIPTION_ID", "on5yfih5etn5m8rfdidamc1oxa")
+		defer os.Unsetenv("TRANSCRIPTION_ID")
 		os.Setenv("TRANSCRIBE_API", "whisper.cpp")
 		defer os.Unsetenv("TRANSCRIBE_API")
 		os.Setenv("MODEL_SIZE", "medium")
@@ -158,12 +174,13 @@ func TestLoadFromEnv(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
 		require.Equal(t, CallTranscriberConfig{
-			SiteURL:       "http://localhost:8065",
-			CallID:        "8w8jorhr7j83uqr6y1st894hqe",
-			ThreadID:      "udzdsg7dwidbzcidx5khrf8nee",
-			AuthToken:     "qj75unbsef83ik9p7ueypb6iyw",
-			TranscribeAPI: TranscribeAPIWhisperCPP,
-			ModelSize:     ModelSizeMedium,
+			SiteURL:         "http://localhost:8065",
+			CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+			ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+			AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+			TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+			TranscribeAPI:   TranscribeAPIWhisperCPP,
+			ModelSize:       ModelSizeMedium,
 		}, cfg)
 	})
 }
@@ -172,14 +189,16 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = "http://localhost:8065"
 	cfg.CallID = "8w8jorhr7j83uqr6y1st894hqe"
-	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.ThreadID = "udzdsg7dwidbzcidx5khrf8nee"
+	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
+	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
 	cfg.SetDefaults()
 	require.Equal(t, []string{
 		"SITE_URL=http://localhost:8065",
 		"CALL_ID=8w8jorhr7j83uqr6y1st894hqe",
 		"THREAD_ID=udzdsg7dwidbzcidx5khrf8nee",
 		"AUTH_TOKEN=qj75unbsef83ik9p7ueypb6iyw",
+		"TRANSCRIPTION_ID=on5yfih5etn5m8rfdidamc1oxa",
 		"TRANSCRIBE_API=whisper.cpp",
 		"MODEL_SIZE=base",
 		"OUTPUT_FORMAT=vtt",
@@ -190,8 +209,9 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = "http://localhost:8065"
 	cfg.CallID = "8w8jorhr7j83uqr6y1st894hqe"
-	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.ThreadID = "udzdsg7dwidbzcidx5khrf8nee"
+	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
+	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
 	cfg.SetDefaults()
 
 	t.Run("default config", func(t *testing.T) {
