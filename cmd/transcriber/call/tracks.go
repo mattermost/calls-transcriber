@@ -191,10 +191,17 @@ func (t *Transcriber) handleClose(_ any) error {
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
+	defer f.Close()
 
 	if err := tr.WebVTT(f); err != nil {
 		return fmt.Errorf("failed to write WebVTT file: %w", err)
 	}
+
+	if err := t.publishTranscription(f); err != nil {
+		return fmt.Errorf("failed to publish transcription: %w", err)
+	}
+
+	log.Printf("transcription published successfully")
 
 	return nil
 }
