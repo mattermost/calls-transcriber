@@ -183,6 +183,10 @@ func (t *Transcriber) handleClose(_ any) error {
 		tr = append(tr, trackTr)
 	}
 
+	if len(tr) == 0 {
+		return fmt.Errorf("nothing to do, empty transcription")
+	}
+
 	dur := time.Since(start)
 	log.Printf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx",
 		samplesDur, dur, samplesDur.Seconds()/dur.Seconds())
