@@ -4,10 +4,19 @@ import (
 	"encoding/binary"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func getModelPath() string {
+	modelsDir := os.Getenv("MODELS_DIR")
+	if modelsDir == "" {
+		modelsDir = "../../../../models"
+	}
+	return filepath.Join(modelsDir, "ggml-tiny.en.bin")
+}
 
 func TestConfigIsValid(t *testing.T) {
 	tcs := []struct {
@@ -29,7 +38,7 @@ func TestConfigIsValid(t *testing.T) {
 		{
 			name: "valid",
 			cfg: Config{
-				ModelFile:  "../../../../models/ggml-tiny.en.bin",
+				ModelFile:  getModelPath(),
 				NumThreads: 1,
 			},
 		},
@@ -57,7 +66,7 @@ func TestNewContext(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctx, err := NewContext(Config{
 			NumThreads: 1,
-			ModelFile:  "../../../../models/ggml-tiny.en.bin",
+			ModelFile:  getModelPath(),
 		})
 		require.NoError(t, err)
 		require.NotNil(t, ctx)
@@ -69,7 +78,7 @@ func TestNewContext(t *testing.T) {
 	t.Run("destroy", func(t *testing.T) {
 		ctx, err := NewContext(Config{
 			NumThreads: 1,
-			ModelFile:  "../../../../models/ggml-tiny.en.bin",
+			ModelFile:  getModelPath(),
 		})
 		require.NoError(t, err)
 		require.NotNil(t, ctx)
@@ -85,7 +94,7 @@ func TestNewContext(t *testing.T) {
 func TestTranscribe(t *testing.T) {
 	ctx, err := NewContext(Config{
 		NumThreads: 1,
-		ModelFile:  "../../../../models/ggml-tiny.en.bin",
+		ModelFile:  getModelPath(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, ctx)
