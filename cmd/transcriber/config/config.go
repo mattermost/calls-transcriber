@@ -141,6 +141,10 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 }
 
 func (cfg CallTranscriberConfig) ToEnv() []string {
+	if cfg == (CallTranscriberConfig{}) {
+		return nil
+	}
+
 	return []string{
 		fmt.Sprintf("SITE_URL=%s", cfg.SiteURL),
 		fmt.Sprintf("CALL_ID=%s", cfg.CallID),
@@ -154,6 +158,10 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 }
 
 func (cfg CallTranscriberConfig) ToMap() map[string]any {
+	if cfg == (CallTranscriberConfig{}) {
+		return nil
+	}
+
 	return map[string]any{
 		"site_url":         cfg.SiteURL,
 		"call_id":          cfg.CallID,
