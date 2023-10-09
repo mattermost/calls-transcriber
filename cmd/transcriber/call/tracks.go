@@ -119,9 +119,14 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 			return
 		}
 
+		// We start processing audio samples only when the recording process has successfully started.
+		if t.startTime.Load() == nil {
+			continue
+		}
+
 		var gap uint64
 		if ctx.startTS == 0 {
-			ctx.startTS = time.Since(t.startTime).Milliseconds()
+			ctx.startTS = time.Since(*t.startTime.Load()).Milliseconds()
 			log.Printf("start offset for track is %v", time.Duration(ctx.startTS)*time.Millisecond)
 		} else if receiveGap := time.Since(prevArrivalTime); receiveGap > audioGapThreshold {
 			// If the last received audio packet was more than a audioGapThreshold
@@ -157,10 +162,8 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 }
 
 // handleClose will kick off post-processing of saved voice tracks.
-func (t *Transcriber) handleClose(_ any) error {
+func (t *Transcriber) handleClose() error {
 	log.Printf("handleClose")
-
-	defer close(t.doneCh)
 
 	t.liveTracksWg.Wait()
 	close(t.trackCtxs)
@@ -185,6 +188,8 @@ func (t *Transcriber) handleClose(_ any) error {
 	}
 
 	if len(tr) == 0 {
+		// Treating this as an error as want to play safe for now as
+		// it should be extremely rare for a real call to have an empty transcription.
 		return fmt.Errorf("nothing to do, empty transcription")
 	}
 

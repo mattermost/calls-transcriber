@@ -96,10 +96,12 @@ github.com/mattermost/ldap v0.0.0-20201202150706-ee0e6284187d h1:/RJ/UV7M5c7L2TQ
 github.com/mattermost/ldap v0.0.0-20201202150706-ee0e6284187d/go.mod h1:HLbgMEI5K131jpxGazJ97AxfPDt31osq36YS1oxFQPQ=
 github.com/mattermost/logr/v2 v2.0.16 h1:jnePX4cPskC3WDFvUardh/xZfxNdsFXbEERJQ1kUEDE=
 github.com/mattermost/logr/v2 v2.0.16/go.mod h1:1dm/YhTpozsqANXxo5Pi5zYLBsal2xY0pX+JZNbzYJY=
+github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20231009181626-5ffdff167863 h1:MqLFOJFBgcUZFPyb4zYRDJcy+kAYB5/LOxYN/wX8xRg=
+github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20231009181626-5ffdff167863/go.mod h1:uBazxv1nNZkg53pWH/lcuCtslgAfB9uTqNG+43MDNyQ=
 github.com/mattermost/mattermost/server/public v0.0.6 h1:FUaJ+P36E3Tt12Umdm8p1h7sZNUeObDk3p3aFTaBkCo=
 github.com/mattermost/mattermost/server/public v0.0.6/go.mod h1:Y7Ht1haGGrsuYzX73HhpSe2VnbGLuZj2/tsQslHd2/M=
-github.com/mattermost/rtcd v0.11.3-0.20230828162144-655cb1f6faff h1:c/6ukJGF1Yu7o9uCuNAoNG4PETIo/0hZn9waA5HlA/U=
-github.com/mattermost/rtcd v0.11.3-0.20230828162144-655cb1f6faff/go.mod h1:cx+aTw8QVgR0MexYMnrm2JrUMP0kUhA7X/3YW/IKA1c=
+github.com/mattermost/rtcd v0.11.3-0.20231009173045-3bc451cd0734 h1:nku+UULi1WKSRdFlIRy8dGMkE+l4J+FST3VtxSlgzOc=
+github.com/mattermost/rtcd v0.11.3-0.20231009173045-3bc451cd0734/go.mod h1:7C412PFWeVSZK0E8Ruht5ArHP+zxhSr/sMDJvnUFDe4=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/microcosm-cc/bluemonday v1.0.1/go.mod h1:hsXNsILzKxV+sX77C5b8FSuKF00vh2OMYv+xgHpAMF4=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=

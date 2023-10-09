@@ -137,3 +137,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 
 	return fmt.Errorf("maximum attempts reached")
 }
+
+func newTimeP(t time.Time) *time.Time {
+	return &t
+}

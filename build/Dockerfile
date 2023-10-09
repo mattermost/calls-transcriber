@@ -32,7 +32,7 @@ ARG ARCH
 ARG WHISPER_VERSION
 COPY --from=builder /src/dist/calls-transcriber-linux-${ARCH:?} /opt/calls-transcriber/bin/calls-transcriber
 COPY --from=builder /tmp/whisper.cpp-${WHISPER_VERSION}/models /models
+COPY --from=builder /src/build/entrypoint.sh .
 
-USER calls
-
-ENTRYPOINT ["/opt/calls-transcriber/bin/calls-transcriber"]
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["/opt/calls-transcriber/bin/calls-transcriber"]

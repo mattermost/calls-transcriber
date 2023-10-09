@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/call"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
+)
+
+const (
+	startTimeout = 30 * time.Second
 )
 
 func main() {
@@ -32,7 +38,13 @@ func main() {
 
 	log.Printf("starting transcriber")
 
-	if err := transcriber.Start(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
+	defer cancel()
+	if err := transcriber.Start(ctx); err != nil {
+		if err := transcriber.ReportJobFailure(err.Error()); err != nil {
+			log.Printf("failed to report job failure: %s", err)
+		}
+
 		log.Fatalf("failed to start transcriber: %s", err)
 	}
 
@@ -43,9 +55,12 @@ func main() {
 
 	select {
 	case <-transcriber.Done():
+		if err := transcriber.Err(); err != nil {
+			log.Fatalf("transcriber failed: %s", err)
+		}
 	case <-sig:
 		log.Printf("received SIGTERM, stopping transcriber")
-		if err := transcriber.Stop(); err != nil {
+		if err := transcriber.Stop(context.Background()); err != nil {
 			log.Fatalf("failed to stop transcriber: %s", err)
 		}
 	}
