@@ -114,8 +114,9 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 		}
 
 		payload, err = json.Marshal(map[string]string{
-			"file_id":   fi.Id,
-			"thread_id": t.cfg.ThreadID,
+			"transcription_id": t.cfg.TranscriptionID,
+			"file_id":          fi.Id,
+			"thread_id":        t.cfg.ThreadID,
 		})
 		if err != nil {
 			log.Printf("failed to encode payload: %s", err)
