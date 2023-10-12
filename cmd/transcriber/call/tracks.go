@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -59,11 +59,11 @@ func (t *Transcriber) handleTrack(ctx any) error {
 		return fmt.Errorf("failed to parse track ID: %w", err)
 	}
 	if trackType != client.TrackTypeVoice {
-		log.Printf("ignoring non voice track")
+		slog.Debug("ignoring non voice track", slog.String("trackID", trackID))
 		return nil
 	}
 	if mt := track.Codec().MimeType; mt != webrtc.MimeTypeOpus {
-		log.Printf("ignoring unsupported mimetype %s for track %s", mt, trackID)
+		slog.Warn("ignoring unsupported mimetype for track", slog.String("mimeType", mt), slog.String("trackID", trackID))
 		return nil
 	}
 
@@ -89,21 +89,24 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		filename:  filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)),
 	}
 
-	log.Printf("processing voice track of %s", user.Username)
-	log.Printf("start reading loop for track %s", ctx.trackID)
+	slog.Debug("processing voice track",
+		slog.String("username", user.Username),
+		slog.String("sessionID", sessionID),
+		slog.String("trackID", ctx.trackID))
+	slog.Debug("start reading loop for track", slog.String("trackID", ctx.trackID))
 	defer func() {
-		log.Printf("exiting reading loop for track %s", ctx.trackID)
+		slog.Debug("exiting reading loop for track", slog.String("trackID", ctx.trackID))
 		select {
 		case t.trackCtxs <- ctx:
 		default:
-			log.Printf("failed to enqueue track context: %+v", ctx)
+			slog.Error("failed to enqueue track context", slog.Any("ctx", ctx))
 		}
 		t.liveTracksWg.Done()
 	}()
 
 	oggWriter, err := ogg.NewWriter(ctx.filename, trackInAudioRate, trackAudioChannels)
 	if err != nil {
-		log.Printf("failed to created ogg writer: %s", err)
+		slog.Error("failed to created ogg writer", slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
 		return
 	}
 	defer oggWriter.Close()
@@ -114,7 +117,9 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		pkt, _, readErr := track.ReadRTP()
 		if readErr != nil {
 			if !errors.Is(readErr, io.EOF) {
-				log.Printf("failed to read RTP packet for track %s", ctx.trackID)
+				slog.Error("failed to read RTP packet for track",
+					slog.String("err", readErr.Error()),
+					slog.String("trackID", ctx.trackID))
 			}
 			return
 		}
@@ -127,7 +132,9 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		var gap uint64
 		if ctx.startTS == 0 {
 			ctx.startTS = time.Since(*t.startTime.Load()).Milliseconds()
-			log.Printf("start offset for track is %v", time.Duration(ctx.startTS)*time.Millisecond)
+			slog.Debug("start offset for track",
+				slog.Duration("offset", time.Duration(ctx.startTS)*time.Millisecond),
+				slog.String("trackID", ctx.trackID))
 		} else if receiveGap := time.Since(prevArrivalTime); receiveGap > audioGapThreshold {
 			// If the last received audio packet was more than a audioGapThreshold
 			// ago we may need to fix the RTP timestamp as some clients (e.g. Firefox) will
@@ -137,9 +144,6 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 			// potentially achieve more accurate synchronization.
 			rtpGap := time.Duration((pkt.Timestamp-prevRTPTimestamp)/trackInAudioSamplesPerMs) * time.Millisecond
 
-			log.Printf("Arrival timestamp gap is %v", receiveGap)
-			log.Printf("RTP timestamp gap is %v", rtpGap)
-
 			if (rtpGap - receiveGap).Abs() > audioGapThreshold {
 				// If the difference between the timestamps reported in RTP packets and
 				// the measured time since the last received packet is greater than
@@ -148,7 +152,7 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 				// that we can easily keep track of separate voice sequences (e.g. caused by
 				// muting/unmuting).
 				gap = uint64((receiveGap.Milliseconds() / trackAudioFrameSizeMs) * trackInFrameSize)
-				log.Printf("fixing audio timestamp by %d", gap)
+				slog.Debug("fixing audio timestamp", slog.Uint64("gap", gap), slog.String("trackID", ctx.trackID))
 			}
 		}
 
@@ -156,29 +160,31 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 		prevRTPTimestamp = pkt.Timestamp
 
 		if err := oggWriter.WriteRTP(pkt, gap); err != nil {
-			log.Printf("failed to write RTP packet: %s", err)
+			slog.Error("failed to write RTP packet",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
 		}
 	}
 }
 
 // handleClose will kick off post-processing of saved voice tracks.
 func (t *Transcriber) handleClose() error {
-	log.Printf("handleClose")
+	slog.Debug("handleClose")
 
 	t.liveTracksWg.Wait()
 	close(t.trackCtxs)
 
-	log.Printf("live tracks processing done, starting post processing")
+	slog.Debug("live tracks processing done, starting post processing")
 	start := time.Now()
 
 	var samplesDur time.Duration
 	var tr transcribe.Transcription
 	for ctx := range t.trackCtxs {
-		log.Printf("post processing track %s", ctx.trackID)
+		slog.Debug("post processing track", slog.String("trackID", ctx.trackID))
 
 		trackTr, dur, err := t.transcribeTrack(ctx)
 		if err != nil {
-			log.Printf("failed to transcribe track %q: %s", ctx.trackID, err)
+			slog.Error("failed to transcribe track", slog.String("trackID", ctx.trackID), slog.String("err", err.Error()))
 			continue
 		}
 
@@ -194,8 +200,8 @@ func (t *Transcriber) handleClose() error {
 	}
 
 	dur := time.Since(start)
-	log.Printf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx",
-		samplesDur, dur, samplesDur.Seconds()/dur.Seconds())
+	slog.Debug(fmt.Sprintf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx",
+		samplesDur, dur, samplesDur.Seconds()/dur.Seconds()))
 
 	f, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.vtt",
 		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
@@ -212,7 +218,7 @@ func (t *Transcriber) handleClose() error {
 		return fmt.Errorf("failed to publish transcription: %w", err)
 	}
 
-	log.Printf("transcription published successfully")
+	slog.Debug("transcription published successfully")
 
 	return nil
 }
@@ -246,11 +252,13 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	}
 	defer func() {
 		if err := opusDec.Destroy(); err != nil {
-			log.Printf("failed to destroy decoder: %s", err)
+			slog.Error("failed to destroy decoder",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
 		}
 	}()
 
-	log.Printf("decoding track %s", ctx.trackID)
+	slog.Debug("decoding track", slog.String("trackID", ctx.trackID))
 
 	pcmBuf := make([]float32, trackOutFrameSize)
 	// TODO: consider pre-calculating track duration to minimize memory waste.
@@ -263,7 +271,9 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			log.Printf("failed to parse off page: %s", err)
+			slog.Error("failed to parse ogg page",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
 			continue
 		}
 
@@ -273,7 +283,7 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 		}
 
 		if hdr.GranulePosition > prevGP+uint64(trackInFrameSize) {
-			log.Printf("%v gap in audio samples", time.Duration((hdr.GranulePosition-prevGP)/trackInAudioSamplesPerMs)*time.Millisecond)
+			slog.Debug("gap in audio samples", slog.Duration("gap", time.Duration((hdr.GranulePosition-prevGP)/trackInAudioSamplesPerMs)*time.Millisecond))
 			samples = append(samples, trackTimedSamples{
 				startTS: int64(hdr.GranulePosition) / trackInAudioSamplesPerMs,
 			})
@@ -282,7 +292,9 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 
 		n, err := opusDec.Decode(data, pcmBuf)
 		if err != nil {
-			log.Printf("failed to decode audio data: %s", err)
+			slog.Error("failed to decode audio data",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
 		}
 
 		samples[len(samples)-1].pcm = append(samples[len(samples)-1].pcm, pcmBuf[:n]...)
@@ -312,7 +324,9 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 	for _, ts := range samples {
 		segments, err := transcriber.Transcribe(ts.pcm)
 		if err != nil {
-			log.Printf("failed to transcribe audio samples: %s", err)
+			slog.Error("failed to transcribe audio samples",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
 			continue
 		}
 

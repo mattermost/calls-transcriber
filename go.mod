@@ -1,6 +1,6 @@
 module github.com/mattermost/calls-transcriber
 
-go 1.20
+go 1.21.3
 
 require (
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20231009181626-5ffdff167863

@@ -3,7 +3,7 @@ package call
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,7 +65,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	var connectOnce sync.Once
 	connectedCh := make(chan struct{})
 	t.client.On(client.RTCConnectEvent, func(_ any) error {
-		log.Printf("transcoder RTC client connected")
+		slog.Debug("transcoder RTC client connected")
 
 		connectOnce.Do(func() {
 			close(connectedCh)
@@ -85,7 +85,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	startedCh := make(chan struct{})
 	t.client.On(client.WSCallRecordingState, func(ctx any) error {
 		if recState, ok := ctx.(client.CallJobState); ok && recState.StartAt > 0 {
-			log.Printf("received call recording state: %+v", recState)
+			slog.Debug("received call recording state", slog.Any("recState", recState))
 
 			// Note: recState.StartAt is the absolute timestamp of when the recording
 			//       started to process but could come from a different instance and
@@ -95,7 +95,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 			startOnce.Do(func() {
 				// We are coupling transcribing with recording. This means that we
 				// won't start unless a recording is on going.
-				log.Printf("updating startAt to be in sync with recording, startAt=%d", recState.StartAt)
+				slog.Debug("updating startAt to be in sync with recording", slog.Int64("startAt", recState.StartAt))
 				t.startTime.Store(newTimeP(time.UnixMilli(recState.StartAt)))
 				close(startedCh)
 			})
@@ -127,7 +127,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 
 func (t *Transcriber) Stop(ctx context.Context) error {
 	if err := t.client.Close(); err != nil {
-		log.Printf("failed to close client on stop: %s", err)
+		slog.Error("failed to close client on stop", slog.String("err", err.Error()))
 	}
 
 	select {
