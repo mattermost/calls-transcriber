@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -78,7 +78,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 
 	for i := 0; i < maxUploadRetryAttempts; i++ {
 		if i > 0 {
-			log.Printf("publishTranscription failed, reattempting in %v", uploadRetryAttemptWaitTime)
+			slog.Error("publishTranscription failed", slog.Duration("reattempt_time", uploadRetryAttemptWaitTime))
 			time.Sleep(uploadRetryAttemptWaitTime)
 		}
 
@@ -86,14 +86,14 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 		defer cancelCtx()
 		resp, err := t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL+"/uploads", payload, "")
 		if err != nil {
-			log.Printf("failed to create upload (%d): %s", resp.StatusCode, err)
+			slog.Error("failed to create upload", slog.String("err", err.Error()))
 			continue
 		}
 		defer resp.Body.Close()
 		cancelCtx()
 
 		if err := json.NewDecoder(resp.Body).Decode(&us); err != nil {
-			log.Printf("failed to decode response body: %s", err)
+			slog.Error("failed to decode response body", slog.String("err", err.Error()))
 			continue
 		}
 
@@ -101,7 +101,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 		defer cancelCtx()
 		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, f, nil)
 		if err != nil {
-			log.Printf("failed to upload data (%d): %s", resp.StatusCode, err)
+			slog.Error("failed to upload data", slog.String("err", err.Error()))
 			continue
 		}
 		defer resp.Body.Close()
@@ -109,7 +109,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 
 		var fi model.FileInfo
 		if err := json.NewDecoder(resp.Body).Decode(&fi); err != nil {
-			log.Printf("failed to decode response body: %s", err)
+			slog.Error("failed to decode response body", slog.String("err", err.Error()))
 			continue
 		}
 
@@ -119,7 +119,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 			"thread_id":        t.cfg.ThreadID,
 		})
 		if err != nil {
-			log.Printf("failed to encode payload: %s", err)
+			slog.Error("failed to encode payload", slog.String("err", err.Error()))
 			continue
 		}
 
@@ -128,7 +128,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 		defer cancelCtx()
 		resp, err = t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, url, payload, "")
 		if err != nil {
-			log.Printf("failed to post transcription (%d): %s", resp.StatusCode, err)
+			slog.Error("failed to post transcription", slog.String("err", err.Error()))
 			continue
 		}
 		defer resp.Body.Close()
