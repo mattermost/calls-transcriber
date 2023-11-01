@@ -210,7 +210,9 @@ func (t *Transcriber) handleClose() error {
 	}
 	defer f.Close()
 
-	if err := tr.WebVTT(f); err != nil {
+	if err := tr.WebVTT(f, transcribe.WebVTTOptions{
+		OmitSpeaker: false,
+	}); err != nil {
 		return fmt.Errorf("failed to write WebVTT file: %w", err)
 	}
 

@@ -44,7 +44,11 @@ func (t Transcription) interleave() []namedSegment {
 	return nss
 }
 
-func (t Transcription) WebVTT(w io.Writer) error {
+type WebVTTOptions struct {
+	OmitSpeaker bool
+}
+
+func (t Transcription) WebVTT(w io.Writer, opts WebVTTOptions) error {
 	_, err := fmt.Fprintf(w, "WEBVTT\n")
 	if err != nil {
 		return fmt.Errorf("failed to write: %w", err)
@@ -54,7 +58,11 @@ func (t Transcription) WebVTT(w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("failed to write: %w", err)
 		}
-		_, err = fmt.Fprintf(w, "<v %s>%s\n", s.Speaker, s.Text)
+		tmpl := "<v %[1]s>(%[1]s) %[2]s\n"
+		if opts.OmitSpeaker {
+			tmpl = "%[2]s\n"
+		}
+		_, err = fmt.Fprintf(w, tmpl, s.Speaker, s.Text)
 		if err != nil {
 			return fmt.Errorf("failed to write: %w", err)
 		}
