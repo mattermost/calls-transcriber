@@ -19,7 +19,7 @@ docker pull mattermost/calls-transcriber:latest
 ### Run the container
 
 ```
-docker run --network=host --name calls-transcriber -e "SITE_URL=http://127.0.0.1:8065/" -e "AUTH_TOKEN=ohqd1phqtt8m3gsfg8j5ymymqy" -e "CALL_ID=9c86b3q57fgfpqr8jq3b9yjweh" -e "THREAD_ID=e4pdmi6rqpn7pp9sity9hiza3r" -e "DEV_MODE=true" -v calls-transcriber-volume:/recs mattermost/calls-transcriber
+docker run --network=host --name calls-transcriber -e "SITE_URL=http://127.0.0.1:8065/" -e "AUTH_TOKEN=ohqd1phqtt8m3gsfg8j5ymymqy" -e "CALL_ID=9c86b3q57fgfpqr8jq3b9yjweh" -e "POST_ID=e4pdmi6rqpn7pp9sity9hiza3r" -e "DEV_MODE=true" -v calls-transcriber-volume:/recs mattermost/calls-transcriber
 ```
 
 > **_Note_** 
@@ -32,7 +32,7 @@ docker run --network=host --name calls-transcriber -e "SITE_URL=http://127.0.0.1
 > - `SITE_URL`: The URL pointing to the Mattermost installation.
 > - `AUTH_TOKEN`: The authentication token for the Calls bot.
 > - `CALL_ID`: The channel ID in which the call to transcribe has been started.
-> - `THREAD_ID`: The thread ID the transcription file(s) should be posted to.
+> - `POST_ID`: The post ID the transcription file(s) should be attached to.
 
 > **_Note_**
 >

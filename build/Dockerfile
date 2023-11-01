@@ -10,6 +10,13 @@ FROM ${RUNNER_IMAGE:?} as base
 # Setup system dependencies
 WORKDIR /workdir
 
+# Install TLS certificates
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create unprivileged user to run the recorder process
 RUN groupadd -r calls && useradd -mr -g calls calls
 

@@ -33,20 +33,20 @@ func TestConfigIsValid(t *testing.T) {
 			expectedError: "CallID cannot be empty",
 		},
 		{
-			name: "missing ThreadID",
+			name: "missing PostID",
 			cfg: CallTranscriberConfig{
 				SiteURL:   "http://localhost:8065",
 				CallID:    "8w8jorhr7j83uqr6y1st894hqe",
 				AuthToken: "qj75unbsef83ik9p7ueypb6iyw",
 			},
-			expectedError: "ThreadID cannot be empty",
+			expectedError: "PostID cannot be empty",
 		},
 		{
 			name: "missing AuthToken",
 			cfg: CallTranscriberConfig{
-				SiteURL:  "http://localhost:8065",
-				CallID:   "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID: "udzdsg7dwidbzcidx5khrf8nee",
+				SiteURL: "http://localhost:8065",
+				CallID:  "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:  "udzdsg7dwidbzcidx5khrf8nee",
 			},
 			expectedError: "AuthToken cannot be empty",
 		},
@@ -55,7 +55,7 @@ func TestConfigIsValid(t *testing.T) {
 			cfg: CallTranscriberConfig{
 				SiteURL:   "http://localhost:8065",
 				CallID:    "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:  "udzdsg7dwidbzcidx5khrf8nee",
+				PostID:    "udzdsg7dwidbzcidx5khrf8nee",
 				AuthToken: "qj75unbsef83ik9p7ueypb6iyw",
 			},
 			expectedError: "TranscriptionID cannot be empty",
@@ -65,7 +65,7 @@ func TestConfigIsValid(t *testing.T) {
 			cfg: CallTranscriberConfig{
 				SiteURL:         "http://localhost:8065",
 				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
 				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 			},
@@ -76,7 +76,7 @@ func TestConfigIsValid(t *testing.T) {
 			cfg: CallTranscriberConfig{
 				SiteURL:         "http://localhost:8065",
 				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
 				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 				TranscribeAPI:   TranscribeAPIDefault,
@@ -89,7 +89,7 @@ func TestConfigIsValid(t *testing.T) {
 			cfg: CallTranscriberConfig{
 				SiteURL:         "http://localhost:8065",
 				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
 				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 				TranscribeAPI:   TranscribeAPIDefault,
@@ -102,7 +102,7 @@ func TestConfigIsValid(t *testing.T) {
 			cfg: CallTranscriberConfig{
 				SiteURL:         "http://localhost:8065",
 				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
-				ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
 				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 				TranscribeAPI:   TranscribeAPIDefault,
@@ -160,8 +160,8 @@ func TestLoadFromEnv(t *testing.T) {
 		defer os.Unsetenv("SITE_URL")
 		os.Setenv("CALL_ID", "8w8jorhr7j83uqr6y1st894hqe")
 		defer os.Unsetenv("CALL_ID")
-		os.Setenv("THREAD_ID", "udzdsg7dwidbzcidx5khrf8nee")
-		defer os.Unsetenv("THREAD_ID")
+		os.Setenv("POST_ID", "udzdsg7dwidbzcidx5khrf8nee")
+		defer os.Unsetenv("POST_ID")
 		os.Setenv("AUTH_TOKEN", "qj75unbsef83ik9p7ueypb6iyw")
 		defer os.Unsetenv("AUTH_TOKEN")
 		os.Setenv("TRANSCRIPTION_ID", "on5yfih5etn5m8rfdidamc1oxa")
@@ -176,7 +176,7 @@ func TestLoadFromEnv(t *testing.T) {
 		require.Equal(t, CallTranscriberConfig{
 			SiteURL:         "http://localhost:8065",
 			CallID:          "8w8jorhr7j83uqr6y1st894hqe",
-			ThreadID:        "udzdsg7dwidbzcidx5khrf8nee",
+			PostID:          "udzdsg7dwidbzcidx5khrf8nee",
 			AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 			TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 			TranscribeAPI:   TranscribeAPIWhisperCPP,
@@ -189,14 +189,14 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = "http://localhost:8065"
 	cfg.CallID = "8w8jorhr7j83uqr6y1st894hqe"
-	cfg.ThreadID = "udzdsg7dwidbzcidx5khrf8nee"
+	cfg.PostID = "udzdsg7dwidbzcidx5khrf8nee"
 	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
 	cfg.SetDefaults()
 	require.Equal(t, []string{
 		"SITE_URL=http://localhost:8065",
 		"CALL_ID=8w8jorhr7j83uqr6y1st894hqe",
-		"THREAD_ID=udzdsg7dwidbzcidx5khrf8nee",
+		"POST_ID=udzdsg7dwidbzcidx5khrf8nee",
 		"AUTH_TOKEN=qj75unbsef83ik9p7ueypb6iyw",
 		"TRANSCRIPTION_ID=on5yfih5etn5m8rfdidamc1oxa",
 		"TRANSCRIBE_API=whisper.cpp",
@@ -209,7 +209,7 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = "http://localhost:8065"
 	cfg.CallID = "8w8jorhr7j83uqr6y1st894hqe"
-	cfg.ThreadID = "udzdsg7dwidbzcidx5khrf8nee"
+	cfg.PostID = "udzdsg7dwidbzcidx5khrf8nee"
 	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
 	cfg.SetDefaults()

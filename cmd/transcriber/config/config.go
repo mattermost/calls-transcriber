@@ -44,7 +44,7 @@ type CallTranscriberConfig struct {
 	// input config
 	SiteURL         string
 	CallID          string
-	ThreadID        string
+	PostID          string
 	AuthToken       string
 	TranscriptionID string
 
@@ -95,10 +95,10 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("CallID parsing failed")
 	}
 
-	if cfg.ThreadID == "" {
-		return fmt.Errorf("ThreadID cannot be empty")
-	} else if !idRE.MatchString(cfg.ThreadID) {
-		return fmt.Errorf("ThreadID parsing failed")
+	if cfg.PostID == "" {
+		return fmt.Errorf("PostID cannot be empty")
+	} else if !idRE.MatchString(cfg.PostID) {
+		return fmt.Errorf("PostID parsing failed")
 	}
 
 	if cfg.AuthToken == "" {
@@ -148,7 +148,7 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 	return []string{
 		fmt.Sprintf("SITE_URL=%s", cfg.SiteURL),
 		fmt.Sprintf("CALL_ID=%s", cfg.CallID),
-		fmt.Sprintf("THREAD_ID=%s", cfg.ThreadID),
+		fmt.Sprintf("POST_ID=%s", cfg.PostID),
 		fmt.Sprintf("AUTH_TOKEN=%s", cfg.AuthToken),
 		fmt.Sprintf("TRANSCRIPTION_ID=%s", cfg.TranscriptionID),
 		fmt.Sprintf("TRANSCRIBE_API=%s", cfg.TranscribeAPI),
@@ -165,7 +165,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 	return map[string]any{
 		"site_url":         cfg.SiteURL,
 		"call_id":          cfg.CallID,
-		"thread_id":        cfg.ThreadID,
+		"post_id":          cfg.PostID,
 		"auth_token":       cfg.AuthToken,
 		"transcription_id": cfg.TranscriptionID,
 		"transcribe_api":   cfg.TranscribeAPI,
@@ -177,7 +177,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConfig {
 	cfg.SiteURL, _ = m["site_url"].(string)
 	cfg.CallID, _ = m["call_id"].(string)
-	cfg.ThreadID, _ = m["thread_id"].(string)
+	cfg.PostID, _ = m["post_id"].(string)
 	cfg.AuthToken, _ = m["auth_token"].(string)
 	cfg.TranscriptionID, _ = m["transcription_id"].(string)
 	if api, ok := m["transcribe_api"].(string); ok {
@@ -202,7 +202,7 @@ func LoadFromEnv() (CallTranscriberConfig, error) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = strings.TrimSuffix(os.Getenv("SITE_URL"), "/")
 	cfg.CallID = os.Getenv("CALL_ID")
-	cfg.ThreadID = os.Getenv("THREAD_ID")
+	cfg.PostID = os.Getenv("POST_ID")
 	cfg.AuthToken = os.Getenv("AUTH_TOKEN")
 	cfg.TranscriptionID = os.Getenv("TRANSCRIPTION_ID")
 

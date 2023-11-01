@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mattermost/mattermost-plugin-calls/server/public"
+
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
@@ -113,10 +115,10 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 			continue
 		}
 
-		payload, err = json.Marshal(map[string]string{
-			"transcription_id": t.cfg.TranscriptionID,
-			"file_id":          fi.Id,
-			"thread_id":        t.cfg.ThreadID,
+		payload, err = json.Marshal(public.JobInfo{
+			JobID:  t.cfg.TranscriptionID,
+			FileID: fi.Id,
+			PostID: t.cfg.PostID,
 		})
 		if err != nil {
 			slog.Error("failed to encode payload", slog.String("err", err.Error()))
