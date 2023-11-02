@@ -23,7 +23,9 @@ RUN groupadd -r calls && useradd -mr -g calls calls
 FROM ${GO_IMAGE:?} as builder
 ARG ARCH
 ARG OPUS_VERSION
+ARG OPUS_SHA
 ARG WHISPER_VERSION
+ARG WHISPER_SHA
 ARG DEBIAN_FRONTEND=noninteractive
 #GO_BUILD_PLATFORMS holds the platforms that we will build the docker image against
 ARG GO_BUILD_PLATFORMS=linux-${ARCH:?}
@@ -32,7 +34,7 @@ ARG GO_BUILD_PLATFORMS=linux-${ARCH:?}
 COPY . /src
 WORKDIR /src
 
-RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${WHISPER_VERSION} "tiny base small"
+RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "tiny base small"
 
 FROM base AS runner
 ARG ARCH

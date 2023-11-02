@@ -37,8 +37,10 @@ ARCH                    ?= amd64
 ## CGO dependencies
 # Whisper.cpp
 WHISPER_VERSION ?= "1.4.0"
+WHISPER_SHA ?= "b2e34e65777033584fa6769a366cdb0228bc5c7da81e58a5e8dc0ce94d0fb54e"
 # Opus
 OPUS_VERSION ?= "1.4"
+OPUS_SHA ?= "c9b32b4253be5ae63d1ff16eea06b94b5f0f2951b7a02aceef58e3a3ce49c51f"
 
 ## Docker Variables
 # Docker executable
@@ -165,7 +167,9 @@ docker-build: ## to build the docker image
 	--build-arg ARCH=${ARCH} \
 	--build-arg RUNNER_IMAGE=${DOCKER_IMAGE_RUNNER} \
 	--build-arg OPUS_VERSION=${OPUS_VERSION} \
+	--build-arg OPUS_SHA=${OPUS_SHA} \
 	--build-arg WHISPER_VERSION=${WHISPER_VERSION} \
+	--build-arg WHISPER_SHA=${WHISPER_SHA} \
 	-f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
@@ -294,7 +298,7 @@ go-build-docker: # to build binaries under a controlled docker dedicated go cont
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/bash ./build/build.sh ${OPUS_VERSION} ${WHISPER_VERSION} || ${FAIL}
+	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} || ${FAIL}
 	@$(OK) go build docker
 
 .PHONY: go-run
@@ -311,7 +315,7 @@ go-test: ## to run tests
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${WHISPER_VERSION}" || ${FAIL}
+	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" || ${FAIL}
 	@$(OK) testing
 
 .PHONY: go-mod-check
@@ -338,7 +342,7 @@ go-lint: ## to lint go code
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
 	${DOCKER_IMAGE_GOLINT} \
-	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${WHISPER_VERSION}" || ${FAIL}
+	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" || ${FAIL}
 	@$(OK) App linting
 
 .PHONY: go-fmt
