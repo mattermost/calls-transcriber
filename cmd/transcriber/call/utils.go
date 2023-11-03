@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
@@ -22,6 +23,10 @@ const (
 	httpUploadTimeout          = 10 * time.Second
 	maxUploadRetryAttempts     = 5
 	uploadRetryAttemptWaitTime = 5 * time.Second
+)
+
+var (
+	filenameSanitizationRE = regexp.MustCompile(`[\\:*?\"<>|\n\s/]`)
 )
 
 func (t *Transcriber) getUserForSession(sessionID string) (*model.User, error) {
@@ -58,15 +63,24 @@ func getModelsDir() string {
 }
 
 func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err error) {
-	vttFile, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.vtt",
-		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
+	name := t.cfg.CallID
+
+	channel, err := t.getChannelForCall()
+	if err != nil {
+		slog.Error("failed to get channel", slog.String("err", err.Error()))
+	} else if channel.Type == model.ChannelTypeOpen || channel.Type == model.ChannelTypePrivate {
+		name = channel.DisplayName
+	}
+
+	fname := sanitizeFilename(fmt.Sprintf("call-%s-%s", name, time.Now().UTC().Format("2006-01-02-15_04_05")))
+
+	vttFile, err := os.OpenFile(filepath.Join(getDataDir(), fname+".vtt"), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer vttFile.Close()
 
-	textFile, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.txt",
-		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
+	textFile, err := os.OpenFile(filepath.Join(getDataDir(), fname+".txt"), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
@@ -223,4 +237,27 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 
 func newTimeP(t time.Time) *time.Time {
 	return &t
+}
+
+func sanitizeFilename(name string) string {
+	return filenameSanitizationRE.ReplaceAllString(name, "_")
+}
+
+func (t *Transcriber) getChannelForCall() (*model.Channel, error) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), httpRequestTimeout)
+	defer cancelFn()
+
+	url := fmt.Sprintf("%s/plugins/%s/bot/channels/%s", t.cfg.SiteURL, pluginID, t.cfg.CallID)
+	resp, err := t.apiClient.DoAPIRequest(ctx, http.MethodGet, url, "", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch channel: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var channel *model.Channel
+	if err := json.NewDecoder(resp.Body).Decode(&channel); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal channel: %w", err)
+	}
+
+	return channel, nil
 }
