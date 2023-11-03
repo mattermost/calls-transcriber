@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
+
 	"github.com/mattermost/mattermost-plugin-calls/server/public"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -55,33 +57,67 @@ func getModelsDir() string {
 	return modelsDir
 }
 
-func (t *Transcriber) publishTranscription(f *os.File) (err error) {
-	if _, err := f.Seek(0, 0); err != nil {
+func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err error) {
+	vttFile, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.vtt",
+		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer vttFile.Close()
+
+	textFile, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.txt",
+		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open output file: %w", err)
+	}
+	defer textFile.Close()
+
+	if err := tr.WebVTT(vttFile, transcribe.WebVTTOptions{
+		OmitSpeaker: false,
+	}); err != nil {
+		return fmt.Errorf("failed to write WebVTT file: %w", err)
+	}
+
+	if err := tr.Text(textFile); err != nil {
+		return fmt.Errorf("failed to write text file: %w", err)
+	}
+
+	if _, err := vttFile.Seek(0, 0); err != nil {
 		return fmt.Errorf("failed to seek: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/plugins/%s/bot", t.apiClient.URL, pluginID)
+	if _, err := textFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to seek: %w", err)
+	}
 
-	info, err := f.Stat()
+	vttInfo, err := vttFile.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	us := &model.UploadSession{
-		ChannelId: t.cfg.CallID,
-		Filename:  filepath.Base(f.Name()),
-		FileSize:  info.Size(),
+	textInfo, err := textFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	payload, err := json.Marshal(us)
-	if err != nil {
-		return fmt.Errorf("failed to encode payload: %w", err)
-	}
+	apiURL := fmt.Sprintf("%s/plugins/%s/bot", t.apiClient.URL, pluginID)
 
 	for i := 0; i < maxUploadRetryAttempts; i++ {
 		if i > 0 {
 			slog.Error("publishTranscription failed", slog.Duration("reattempt_time", uploadRetryAttemptWaitTime))
 			time.Sleep(uploadRetryAttemptWaitTime)
+		}
+
+		// VTT format upload
+		us := &model.UploadSession{
+			ChannelId: t.cfg.CallID,
+			Filename:  filepath.Base(vttFile.Name()),
+			FileSize:  vttInfo.Size(),
+		}
+
+		payload, err := json.Marshal(us)
+		if err != nil {
+			return fmt.Errorf("failed to encode payload: %w", err)
 		}
 
 		ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
@@ -101,7 +137,7 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 
 		ctx, cancelCtx = context.WithTimeout(context.Background(), httpUploadTimeout)
 		defer cancelCtx()
-		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, f, nil)
+		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, vttFile, nil)
 		if err != nil {
 			slog.Error("failed to upload data", slog.String("err", err.Error()))
 			continue
@@ -109,16 +145,60 @@ func (t *Transcriber) publishTranscription(f *os.File) (err error) {
 		defer resp.Body.Close()
 		cancelCtx()
 
-		var fi model.FileInfo
-		if err := json.NewDecoder(resp.Body).Decode(&fi); err != nil {
+		var vttFi model.FileInfo
+		if err := json.NewDecoder(resp.Body).Decode(&vttFi); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
 			continue
 		}
 
+		// text format upload
+		us = &model.UploadSession{
+			ChannelId: t.cfg.CallID,
+			Filename:  filepath.Base(textFile.Name()),
+			FileSize:  textInfo.Size(),
+		}
+
+		payload, err = json.Marshal(us)
+		if err != nil {
+			return fmt.Errorf("failed to encode payload: %w", err)
+		}
+
+		ctx, cancelCtx = context.WithTimeout(context.Background(), httpRequestTimeout)
+		defer cancelCtx()
+		resp, err = t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL+"/uploads", payload, "")
+		if err != nil {
+			slog.Error("failed to create upload", slog.String("err", err.Error()))
+			continue
+		}
+		defer resp.Body.Close()
+		cancelCtx()
+
+		if err := json.NewDecoder(resp.Body).Decode(&us); err != nil {
+			slog.Error("failed to decode response body", slog.String("err", err.Error()))
+			continue
+		}
+
+		ctx, cancelCtx = context.WithTimeout(context.Background(), httpUploadTimeout)
+		defer cancelCtx()
+		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, textFile, nil)
+		if err != nil {
+			slog.Error("failed to upload data", slog.String("err", err.Error()))
+			continue
+		}
+		defer resp.Body.Close()
+		cancelCtx()
+
+		var textFi model.FileInfo
+		if err := json.NewDecoder(resp.Body).Decode(&textFi); err != nil {
+			slog.Error("failed to decode response body", slog.String("err", err.Error()))
+			continue
+		}
+
+		// attaching post VTT and text formatted files.
 		payload, err = json.Marshal(public.JobInfo{
-			JobID:  t.cfg.TranscriptionID,
-			FileID: fi.Id,
-			PostID: t.cfg.PostID,
+			JobID:   t.cfg.TranscriptionID,
+			FileIDs: []string{vttFi.Id, textFi.Id},
+			PostID:  t.cfg.PostID,
 		})
 		if err != nil {
 			slog.Error("failed to encode payload", slog.String("err", err.Error()))

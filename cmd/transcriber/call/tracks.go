@@ -203,20 +203,7 @@ func (t *Transcriber) handleClose() error {
 	slog.Debug(fmt.Sprintf("transcription process completed for all tracks: transcribed %v of audio in %v, %0.2fx",
 		samplesDur, dur, samplesDur.Seconds()/dur.Seconds()))
 
-	f, err := os.OpenFile(filepath.Join(getDataDir(), fmt.Sprintf("%s-%s.vtt",
-		t.cfg.CallID, time.Now().UTC().Format("2006-01-02-15_04_05"))), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
-	}
-	defer f.Close()
-
-	if err := tr.WebVTT(f, transcribe.WebVTTOptions{
-		OmitSpeaker: false,
-	}); err != nil {
-		return fmt.Errorf("failed to write WebVTT file: %w", err)
-	}
-
-	if err := t.publishTranscription(f); err != nil {
+	if err := t.publishTranscription(tr); err != nil {
 		return fmt.Errorf("failed to publish transcription: %w", err)
 	}
 
