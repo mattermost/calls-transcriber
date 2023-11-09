@@ -1,6 +1,6 @@
 module github.com/mattermost/calls-transcriber
 
-go 1.21.3
+go 1.21.4
 
 require (
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.3-0.20231103204030-06bd54bcfa67
@@ -9,6 +9,7 @@ require (
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.7.13
 	github.com/pion/webrtc/v3 v3.2.12
+	github.com/streamer45/silero-vad-go v0.1.0
 	github.com/stretchr/testify v1.8.4
 )
 

@@ -18,6 +18,8 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/rtcd/client"
 
+	"github.com/streamer45/silero-vad-go/speech"
+
 	"github.com/pion/webrtc/v3"
 )
 
@@ -304,13 +306,77 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 		return trackTr, 0, fmt.Errorf("failed to decode audio samples: %w", err)
 	}
 
+	slog.Debug("decoding done", slog.Any("samplesLen", len(samples)))
+
 	transcriber, err := t.newTrackTranscriber()
 	if err != nil {
 		return trackTr, 0, fmt.Errorf("failed to create track transcriber: %w", err)
 	}
 
-	var totalDur time.Duration
+	sd, err := speech.NewDetector(speech.DetectorConfig{
+		ModelPath:            filepath.Join(getModelsDir(), "silero_vad.onnx"),
+		SampleRate:           trackOutAudioRate,
+		WindowSize:           1536,
+		Threshold:            0.5,
+		MinSilenceDurationMs: 1000,
+		SpeechPadMs:          100,
+	})
+	if err != nil {
+		return trackTr, 0, fmt.Errorf("failed to ceate speech detector: %w", err)
+	}
+	defer func() {
+		if err := sd.Destroy(); err != nil {
+			slog.Error("failed to destroy speech detector", slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
+		}
+	}()
+
+	// Before transcribing, we feed the samples to a speech detector and adjust
+	// the timestamps in accordance to when the speech begins/ends. This is
+	// to account for any potential silence that Whisper wouldn't recognize with
+	// much accuracy.
+	// TODO: consider deprecating this logic if we get accurate word level timestamps
+	// (https://github.com/ggerganov/whisper.cpp/issues/375).
+
+	var speechSamples []trackTimedSamples
 	for _, ts := range samples {
+		segments, err := sd.Detect(ts.pcm)
+		if err != nil {
+			slog.Error("failed to detect speech",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
+			continue
+		}
+		slog.Debug("speech detection done", slog.Any("segments", segments))
+
+		for _, seg := range segments {
+			startSampleOff := int(seg.SpeechStartAt * trackOutAudioRate)
+			endSampleOff := int(seg.SpeechEndAt * trackOutAudioRate)
+
+			if startSampleOff >= len(ts.pcm) {
+				slog.Error("invalid startSampleOff",
+					slog.Int("startSampleOff", startSampleOff),
+					slog.String("trackID", ctx.trackID))
+				continue
+			}
+
+			var speechPCM []float32
+			if endSampleOff > startSampleOff {
+				speechPCM = ts.pcm[startSampleOff:endSampleOff]
+			} else {
+				speechPCM = ts.pcm[startSampleOff:]
+			}
+
+			speechSamples = append(speechSamples, trackTimedSamples{
+				pcm:     speechPCM,
+				startTS: ts.startTS + int64(seg.SpeechStartAt*1000),
+			})
+		}
+	}
+
+	slog.Debug("speech detection done", slog.Any("speechSamples", len(speechSamples)))
+
+	var totalDur time.Duration
+	for _, ts := range speechSamples {
 		segments, err := transcriber.Transcribe(ts.pcm)
 		if err != nil {
 			slog.Error("failed to transcribe audio samples",
