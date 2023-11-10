@@ -26,6 +26,8 @@ ARG OPUS_VERSION
 ARG OPUS_SHA
 ARG WHISPER_VERSION
 ARG WHISPER_SHA
+ARG ONNX_VERSION
+ARG ONNX_SHA
 ARG DEBIAN_FRONTEND=noninteractive
 #GO_BUILD_PLATFORMS holds the platforms that we will build the docker image against
 ARG GO_BUILD_PLATFORMS=linux-${ARCH:?}
@@ -34,14 +36,18 @@ ARG GO_BUILD_PLATFORMS=linux-${ARCH:?}
 COPY . /src
 WORKDIR /src
 
-RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "tiny base small"
+RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "tiny base small" ${ONNX_VERSION} ${ONNX_SHA}
 
 FROM base AS runner
 ARG ARCH
 ARG WHISPER_VERSION
+ARG ONNX_VERSION
 COPY --from=builder /src/dist/calls-transcriber-linux-${ARCH:?} /opt/calls-transcriber/bin/calls-transcriber
 COPY --from=builder /tmp/whisper.cpp-${WHISPER_VERSION}/models /models
+COPY --from=builder /tmp/onnxruntime-linux-x64-${ONNX_VERSION}/lib/* /usr/lib/
+COPY --from=builder /src/build/models/silero_vad.onnx /models
 COPY --from=builder /src/build/entrypoint.sh .
+RUN ldconfig
 
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["/opt/calls-transcriber/bin/calls-transcriber"]
