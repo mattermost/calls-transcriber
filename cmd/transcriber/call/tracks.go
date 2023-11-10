@@ -349,6 +349,9 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 		slog.Debug("speech detection done", slog.Any("segments", segments))
 
 		for _, seg := range segments {
+			// Both SpeechStartAt and SpeechEndAt are in seconds.
+			// We simply multiply by the audio sampling rate to find out
+			// the index of the sample where speech starts/ends.
 			startSampleOff := int(seg.SpeechStartAt * trackOutAudioRate)
 			endSampleOff := int(seg.SpeechEndAt * trackOutAudioRate)
 
@@ -367,7 +370,8 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 			}
 
 			speechSamples = append(speechSamples, trackTimedSamples{
-				pcm:     speechPCM,
+				pcm: speechPCM,
+				// Multiplying as our timestamps are in milliseconds.
 				startTS: ts.startTS + int64(seg.SpeechStartAt*1000),
 			})
 		}
