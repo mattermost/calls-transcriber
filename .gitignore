@@ -2,7 +2,7 @@
 dist/
 
 # whisper models
-models/
+/models
 
 # temporary track files
 tracks/
