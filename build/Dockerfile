@@ -33,9 +33,12 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG GO_BUILD_PLATFORMS=linux-${ARCH:?}
 
 # Setup directories structure and compile
-COPY . /src
+# We first copy just the build directory so that we can properly cache dependencies which can take a while to download.
+COPY ./build /src/build
 WORKDIR /src
+RUN /bin/bash ./build/prepare_deps.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "tiny base small" ${ONNX_VERSION} ${ONNX_SHA}
 
+COPY . /src
 RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "tiny base small" ${ONNX_VERSION} ${ONNX_SHA}
 
 FROM base AS runner
