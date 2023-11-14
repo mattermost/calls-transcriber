@@ -192,7 +192,16 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	cfg.PostID, _ = m["post_id"].(string)
 	cfg.AuthToken, _ = m["auth_token"].(string)
 	cfg.TranscriptionID, _ = m["transcription_id"].(string)
-	cfg.NumThreads, _ = m["num_threads"].(int)
+
+	// num_threads can either be int or float64 dependning whether it's been
+	// previously marshaled or not.
+	switch m["num_threads"].(type) {
+	case int:
+		cfg.NumThreads = m["num_threads"].(int)
+	case float64:
+		cfg.NumThreads = int(m["num_threads"].(float64))
+	}
+
 	if api, ok := m["transcribe_api"].(string); ok {
 		cfg.TranscribeAPI = TranscribeAPI(api)
 	} else {

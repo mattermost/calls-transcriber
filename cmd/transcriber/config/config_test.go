@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
@@ -242,6 +243,18 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	t.Run("default config", func(t *testing.T) {
 		var c CallTranscriberConfig
 		err := c.FromMap(cfg.ToMap()).IsValid()
+		require.NoError(t, err)
+	})
+
+	t.Run("marshaling", func(t *testing.T) {
+		var c CallTranscriberConfig
+		m := cfg.ToMap()
+		data, err := json.Marshal(&m)
+		require.NoError(t, err)
+		var mm map[string]any
+		err = json.Unmarshal(data, &mm)
+		require.NoError(t, err)
+		err = c.FromMap(mm).IsValid()
 		require.NoError(t, err)
 	})
 }
