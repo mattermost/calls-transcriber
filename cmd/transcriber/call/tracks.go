@@ -314,12 +314,15 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 	}
 
 	sd, err := speech.NewDetector(speech.DetectorConfig{
-		ModelPath:            filepath.Join(getModelsDir(), "silero_vad.onnx"),
-		SampleRate:           trackOutAudioRate,
-		WindowSize:           1536,
-		Threshold:            0.5,
-		MinSilenceDurationMs: 1000,
-		SpeechPadMs:          100,
+		ModelPath:   filepath.Join(getModelsDir(), "silero_vad.onnx"),
+		SampleRate:  trackOutAudioRate,
+		WindowSize:  1536,
+		Threshold:   0.5,
+		SpeechPadMs: 100,
+
+		// 2 seconds of silence is a good threshold that allows us not to split speech portions excessively
+		// which in turn will improve the transcribing performance as there will be less overhead.
+		MinSilenceDurationMs: 2000,
 	})
 	if err != nil {
 		return trackTr, 0, fmt.Errorf("failed to ceate speech detector: %w", err)
