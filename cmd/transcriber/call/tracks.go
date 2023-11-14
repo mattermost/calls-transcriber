@@ -410,7 +410,7 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
-			ModelFile:  filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.en.bin", string(t.cfg.ModelSize))),
+			ModelFile:  filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
 			NumThreads: 1,
 		})
 	default:
