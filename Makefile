@@ -92,7 +92,7 @@ GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.go
 GO_BUILD_PLATFORMS           ?= linux-amd64
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))
 # Build options
-GO_BUILD_OPTS                += -mod=readonly -trimpath
+GO_BUILD_OPTS                += -mod=readonly -trimpath -buildmode=pie
 GO_TEST_OPTS                 += -mod=readonly -failfast -race
 # Temporary folder to output compiled binaries artifacts
 GO_OUT_BIN_DIR               := ./dist
