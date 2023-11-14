@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,6 +100,20 @@ func TestConfigIsValid(t *testing.T) {
 			expectedError: "OutputFormat value is not valid",
 		},
 		{
+			name: "invalid NumThreads",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
+			},
+			expectedError: fmt.Sprintf("NumThreads should be in the range [1, %d]", runtime.NumCPU()),
+		},
+		{
 			name: "valid config",
 			cfg: CallTranscriberConfig{
 				SiteURL:         "http://localhost:8065",
@@ -108,6 +124,7 @@ func TestConfigIsValid(t *testing.T) {
 				TranscribeAPI:   TranscribeAPIDefault,
 				ModelSize:       ModelSizeMedium,
 				OutputFormat:    OutputFormatVTT,
+				NumThreads:      1,
 			},
 		},
 	}
@@ -132,6 +149,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			TranscribeAPI: TranscribeAPIDefault,
 			ModelSize:     ModelSizeDefault,
 			OutputFormat:  OutputFormatDefault,
+			NumThreads:    max(1, runtime.NumCPU()/2),
 		}, cfg)
 	})
 
@@ -144,6 +162,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			TranscribeAPI: TranscribeAPIDefault,
 			ModelSize:     ModelSizeMedium,
 			OutputFormat:  OutputFormatDefault,
+			NumThreads:    max(1, runtime.NumCPU()/2),
 		}, cfg)
 	})
 }
@@ -170,6 +189,8 @@ func TestLoadFromEnv(t *testing.T) {
 		defer os.Unsetenv("TRANSCRIBE_API")
 		os.Setenv("MODEL_SIZE", "medium")
 		defer os.Unsetenv("MODEL_SIZE")
+		os.Setenv("NUM_THREADS", "1")
+		defer os.Unsetenv("NUM_THREADS")
 		cfg, err := LoadFromEnv()
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
@@ -181,6 +202,7 @@ func TestLoadFromEnv(t *testing.T) {
 			TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 			TranscribeAPI:   TranscribeAPIWhisperCPP,
 			ModelSize:       ModelSizeMedium,
+			NumThreads:      1,
 		}, cfg)
 	})
 }
@@ -192,6 +214,7 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 	cfg.PostID = "udzdsg7dwidbzcidx5khrf8nee"
 	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
+	cfg.NumThreads = 1
 	cfg.SetDefaults()
 	require.Equal(t, []string{
 		"SITE_URL=http://localhost:8065",
@@ -202,6 +225,7 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 		"TRANSCRIBE_API=whisper.cpp",
 		"MODEL_SIZE=base",
 		"OUTPUT_FORMAT=vtt",
+		"NUM_THREADS=1",
 	}, cfg.ToEnv())
 }
 
@@ -212,6 +236,7 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	cfg.PostID = "udzdsg7dwidbzcidx5khrf8nee"
 	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
+	cfg.NumThreads = 1
 	cfg.SetDefaults()
 
 	t.Run("default config", func(t *testing.T) {

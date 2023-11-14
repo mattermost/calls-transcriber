@@ -411,7 +411,7 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
 			ModelFile:  filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
-			NumThreads: 1,
+			NumThreads: t.cfg.NumThreads,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)
