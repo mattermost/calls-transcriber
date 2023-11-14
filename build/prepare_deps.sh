@@ -25,4 +25,5 @@ for model in ${MODELS}; do ./models/download-ggml-model.sh "${model}.en"; done &
 make libwhisper.a && \
 cd /tmp && \
 wget https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-x64-${ONNX_VERSION}.tgz && \
+echo "${ONNX_SHA} onnxruntime-linux-x64-${ONNX_VERSION}.tgz" | sha256sum --check && \
 tar xf onnxruntime-linux-x64-${ONNX_VERSION}.tgz
