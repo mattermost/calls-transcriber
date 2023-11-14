@@ -4,13 +4,31 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
+)
+
+var (
+	segmentSanitizationSpacesRE = regexp.MustCompile(`\s+`)
+	// We allow spaces, dots, digits and letters in both ASCII and foreign alphabets.
+	segmentSanitizationSpecialRE = regexp.MustCompile(`[^\s\d\pL\pN.]`)
 )
 
 type namedSegment struct {
 	Segment
 	Speaker string
+}
+
+func (ns *namedSegment) sanitize() {
+	// Remove unwanted special characters
+	ns.Speaker = segmentSanitizationSpecialRE.ReplaceAllString(ns.Speaker, "")
+
+	// Remove any left extra space
+	ns.Text = strings.TrimSpace(ns.Text)
+	ns.Speaker = strings.TrimSpace(ns.Speaker)
+	ns.Text = segmentSanitizationSpacesRE.ReplaceAllString(ns.Text, " ")
+	ns.Speaker = segmentSanitizationSpacesRE.ReplaceAllString(ns.Speaker, " ")
 }
 
 // vttTS converts ts milliseconds in the 00:00:00.000 format.
@@ -61,6 +79,8 @@ func (t Transcription) WebVTT(w io.Writer, opts WebVTTOptions) error {
 		return fmt.Errorf("failed to write: %w", err)
 	}
 	for _, s := range t.interleave() {
+		s.sanitize()
+
 		_, err = fmt.Fprintf(w, "\n%s --> %s\n", vttTS(s.StartTS, true), vttTS(s.EndTS, true))
 		if err != nil {
 			return fmt.Errorf("failed to write: %w", err)
@@ -80,6 +100,8 @@ func (t Transcription) WebVTT(w io.Writer, opts WebVTTOptions) error {
 
 func (t Transcription) Text(w io.Writer) error {
 	for i, s := range t.interleave() {
+		s.sanitize()
+
 		nl := "\n"
 		if i == 0 {
 			nl = ""
@@ -88,7 +110,7 @@ func (t Transcription) Text(w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("failed to write: %w", err)
 		}
-		_, err = fmt.Fprintf(w, "%s\n%s\n", s.Speaker, strings.TrimSpace(s.Text))
+		_, err = fmt.Fprintf(w, "%s\n%s\n", s.Speaker, s.Text)
 		if err != nil {
 			return fmt.Errorf("failed to write: %w", err)
 		}
