@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -47,6 +49,7 @@ type CallTranscriberConfig struct {
 	PostID          string
 	AuthToken       string
 	TranscriptionID string
+	NumThreads      int
 
 	// output config
 	TranscribeAPI TranscribeAPI
@@ -122,6 +125,9 @@ func (cfg CallTranscriberConfig) IsValid() error {
 	if cfg.OutputFormat != OutputFormatVTT {
 		return fmt.Errorf("OutputFormat value is not valid")
 	}
+	if numCPU := runtime.NumCPU(); cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
+		return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
+	}
 
 	return nil
 }
@@ -137,6 +143,10 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 
 	if cfg.OutputFormat == "" {
 		cfg.OutputFormat = OutputFormatVTT
+	}
+
+	if cfg.NumThreads == 0 {
+		cfg.NumThreads = max(1, runtime.NumCPU()/2)
 	}
 }
 
@@ -154,6 +164,7 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("TRANSCRIBE_API=%s", cfg.TranscribeAPI),
 		fmt.Sprintf("MODEL_SIZE=%s", cfg.ModelSize),
 		fmt.Sprintf("OUTPUT_FORMAT=%s", cfg.OutputFormat),
+		fmt.Sprintf("NUM_THREADS=%d", cfg.NumThreads),
 	}
 }
 
@@ -171,6 +182,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		"transcribe_api":   cfg.TranscribeAPI,
 		"model_size":       cfg.ModelSize,
 		"output_format":    cfg.OutputFormat,
+		"num_threads":      cfg.NumThreads,
 	}
 }
 
@@ -180,6 +192,16 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	cfg.PostID, _ = m["post_id"].(string)
 	cfg.AuthToken, _ = m["auth_token"].(string)
 	cfg.TranscriptionID, _ = m["transcription_id"].(string)
+
+	// num_threads can either be int or float64 dependning whether it's been
+	// previously marshaled or not.
+	switch m["num_threads"].(type) {
+	case int:
+		cfg.NumThreads = m["num_threads"].(int)
+	case float64:
+		cfg.NumThreads = int(m["num_threads"].(float64))
+	}
+
 	if api, ok := m["transcribe_api"].(string); ok {
 		cfg.TranscribeAPI = TranscribeAPI(api)
 	} else {
@@ -205,6 +227,7 @@ func LoadFromEnv() (CallTranscriberConfig, error) {
 	cfg.PostID = os.Getenv("POST_ID")
 	cfg.AuthToken = os.Getenv("AUTH_TOKEN")
 	cfg.TranscriptionID = os.Getenv("TRANSCRIPTION_ID")
+	cfg.NumThreads, _ = strconv.Atoi(os.Getenv("NUM_THREADS"))
 
 	if val := os.Getenv("TRANSCRIBE_API"); val != "" {
 		cfg.TranscribeAPI = TranscribeAPI(val)

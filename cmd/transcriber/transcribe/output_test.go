@@ -374,6 +374,33 @@ B2
 		require.NoError(t, err)
 		require.Equal(t, expected, b.String())
 	})
+
+	t.Run("html escaping", func(t *testing.T) {
+		tr := Transcription{
+			TrackTranscription{
+				Speaker: "<SpeakerA>",
+				Segments: []Segment{
+					{
+						StartTS: 0,
+						EndTS:   1000,
+						Text:    "Some \"text\" to 'escape'",
+					},
+				},
+			},
+		}
+
+		var b strings.Builder
+		expected := `WEBVTT
+
+00:00:00.000 --> 00:00:01.000
+<v SpeakerA>(SpeakerA) Some &#34;text&#34; to &#39;escape&#39;
+`
+		err := tr.WebVTT(&b, WebVTTOptions{
+			OmitSpeaker: false,
+		})
+		require.NoError(t, err)
+		require.Equal(t, expected, b.String())
+	})
 }
 
 func TestText(t *testing.T) {
@@ -463,4 +490,173 @@ B2
 		require.NoError(t, err)
 		require.Equal(t, expected, b.String())
 	})
+}
+
+func TestSanitizeSegment(t *testing.T) {
+	tcs := []struct {
+		name     string
+		input    namedSegment
+		expected namedSegment
+	}{
+		{
+			name: "empty",
+		},
+		{
+			name: "plaintext",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "some sentence.",
+				},
+				Speaker: "Firstname Lastname",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "some sentence.",
+				},
+				Speaker: "Firstname Lastname",
+			},
+		},
+		{
+			name: "multiple spaces",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "   some   sentence with  multiple spaces.  ",
+				},
+				Speaker: "Firstname   Lastname",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "some sentence with multiple spaces.",
+				},
+				Speaker: "Firstname Lastname",
+			},
+		},
+		{
+			name: "new lines",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "sentence with new\r \n\r\n lines\n\n.\n\n\n",
+				},
+				Speaker: "Firstname\n\nLastname",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "sentence with new lines .",
+				},
+				Speaker: "Firstname Lastname",
+			},
+		},
+		{
+			name: "dots",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test sentence.",
+				},
+				Speaker: "Firstname Lastname Jr.",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test sentence.",
+				},
+				Speaker: "Firstname Lastname Jr.",
+			},
+		},
+		{
+			name: "dashes and underscores",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "Firstname_Last-name",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "Firstname_Last-name",
+			},
+		},
+		{
+			name: "parentheses",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "(test sentence)",
+				},
+				Speaker: "(Firstname Lastname)",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "(test sentence)",
+				},
+				Speaker: "Firstname Lastname",
+			},
+		},
+		{
+			name: "digits",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test 45",
+				},
+				Speaker: "Firstname45 Lastname",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test 45",
+				},
+				Speaker: "Firstname45 Lastname",
+			},
+		},
+		{
+			name: "unicode",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "Firstname 🦄 Lastname",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "Firstname Lastname",
+			},
+		},
+		{
+			name: "foreign alphabet characters",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "うずまき ナルト",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "うずまき ナルト",
+			},
+		},
+		{
+			name: "foreign alphabet digits",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "٣ ٢",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "٣ ٢",
+			},
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.input.sanitize()
+			require.Equal(t, tc.expected, tc.input)
+		})
+	}
 }
