@@ -2,6 +2,7 @@ package transcribe
 
 import (
 	"fmt"
+	"html"
 	"io"
 	"math"
 	"regexp"
@@ -11,8 +12,8 @@ import (
 
 var (
 	segmentSanitizationSpacesRE = regexp.MustCompile(`\s+`)
-	// We allow spaces, dots, digits and letters in both ASCII and foreign alphabets.
-	segmentSanitizationSpecialRE = regexp.MustCompile(`[^\s\d\pL\pN.]`)
+	// We allow spaces, dots, dashes, underscores, digits and letters in both ASCII and foreign alphabets.
+	segmentSanitizationSpecialRE = regexp.MustCompile(`[^\s\d\pL\pN.\-_]`)
 )
 
 type namedSegment struct {
@@ -20,7 +21,7 @@ type namedSegment struct {
 	Speaker string
 }
 
-func (ns *namedSegment) sanitize() {
+func (ns *namedSegment) sanitize(escapers ...func(string) string) {
 	// Remove unwanted special characters
 	ns.Speaker = segmentSanitizationSpecialRE.ReplaceAllString(ns.Speaker, "")
 
@@ -29,6 +30,11 @@ func (ns *namedSegment) sanitize() {
 	ns.Speaker = strings.TrimSpace(ns.Speaker)
 	ns.Text = segmentSanitizationSpacesRE.ReplaceAllString(ns.Text, " ")
 	ns.Speaker = segmentSanitizationSpacesRE.ReplaceAllString(ns.Speaker, " ")
+
+	for _, escaper := range escapers {
+		ns.Text = escaper(ns.Text)
+		ns.Speaker = escaper(ns.Speaker)
+	}
 }
 
 // vttTS converts ts milliseconds in the 00:00:00.000 format.
@@ -79,7 +85,7 @@ func (t Transcription) WebVTT(w io.Writer, opts WebVTTOptions) error {
 		return fmt.Errorf("failed to write: %w", err)
 	}
 	for _, s := range t.interleave() {
-		s.sanitize()
+		s.sanitize(html.EscapeString)
 
 		_, err = fmt.Fprintf(w, "\n%s --> %s\n", vttTS(s.StartTS, true), vttTS(s.EndTS, true))
 		if err != nil {

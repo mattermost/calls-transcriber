@@ -374,6 +374,33 @@ B2
 		require.NoError(t, err)
 		require.Equal(t, expected, b.String())
 	})
+
+	t.Run("html escaping", func(t *testing.T) {
+		tr := Transcription{
+			TrackTranscription{
+				Speaker: "<SpeakerA>",
+				Segments: []Segment{
+					{
+						StartTS: 0,
+						EndTS:   1000,
+						Text:    "Some \"text\" to 'escape'",
+					},
+				},
+			},
+		}
+
+		var b strings.Builder
+		expected := `WEBVTT
+
+00:00:00.000 --> 00:00:01.000
+<v SpeakerA>(SpeakerA) Some &#34;text&#34; to &#39;escape&#39;
+`
+		err := tr.WebVTT(&b, WebVTTOptions{
+			OmitSpeaker: false,
+		})
+		require.NoError(t, err)
+		require.Equal(t, expected, b.String())
+	})
 }
 
 func TestText(t *testing.T) {
@@ -532,6 +559,21 @@ func TestSanitizeSegment(t *testing.T) {
 					Text: "test sentence.",
 				},
 				Speaker: "Firstname Lastname Jr.",
+			},
+		},
+		{
+			name: "dashes and underscores",
+			input: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "Firstname_Last-name",
+			},
+			expected: namedSegment{
+				Segment: Segment{
+					Text: "test sentence",
+				},
+				Speaker: "Firstname_Last-name",
 			},
 		},
 		{
