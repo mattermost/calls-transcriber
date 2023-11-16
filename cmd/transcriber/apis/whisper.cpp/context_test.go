@@ -15,7 +15,7 @@ func getModelPath() string {
 	if modelsDir == "" {
 		modelsDir = "../../../../models"
 	}
-	return filepath.Join(modelsDir, "ggml-tiny.en.bin")
+	return filepath.Join(modelsDir, "ggml-tiny.bin")
 }
 
 func TestConfigIsValid(t *testing.T) {

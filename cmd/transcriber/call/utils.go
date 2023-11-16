@@ -63,16 +63,10 @@ func getModelsDir() string {
 }
 
 func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err error) {
-	name := t.cfg.CallID
-
-	channel, err := t.getChannelForCall()
+	fname, err := t.getFilenameForCall()
 	if err != nil {
-		slog.Error("failed to get channel", slog.String("err", err.Error()))
-	} else if channel.Type == model.ChannelTypeOpen || channel.Type == model.ChannelTypePrivate {
-		name = channel.DisplayName
+		return fmt.Errorf("failed to get filename for call: %w", err)
 	}
-
-	fname := sanitizeFilename(fmt.Sprintf("call-%s-%s", name, time.Now().UTC().Format("2006-01-02-15_04_05")))
 
 	vttFile, err := os.OpenFile(filepath.Join(getDataDir(), fname+".vtt"), os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
@@ -243,21 +237,27 @@ func sanitizeFilename(name string) string {
 	return filenameSanitizationRE.ReplaceAllString(name, "_")
 }
 
-func (t *Transcriber) getChannelForCall() (*model.Channel, error) {
+func (t *Transcriber) getFilenameForCall() (string, error) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), httpRequestTimeout)
 	defer cancelFn()
 
-	url := fmt.Sprintf("%s/plugins/%s/bot/channels/%s", t.cfg.SiteURL, pluginID, t.cfg.CallID)
+	url := fmt.Sprintf("%s/plugins/%s/bot/calls/%s/filename", t.cfg.SiteURL, pluginID, t.cfg.CallID)
 	resp, err := t.apiClient.DoAPIRequest(ctx, http.MethodGet, url, "", "")
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch channel: %w", err)
+		return "", fmt.Errorf("failed to get filename: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var channel *model.Channel
-	if err := json.NewDecoder(resp.Body).Decode(&channel); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal channel: %w", err)
+	var m map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return "", fmt.Errorf("failed to unmarshal filename: %w", err)
 	}
 
-	return channel, nil
+	filename := sanitizeFilename(m["filename"])
+
+	if filename == "" {
+		return "", fmt.Errorf("invalid empty filename")
+	}
+
+	return filename, nil
 }

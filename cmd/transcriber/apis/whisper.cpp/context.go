@@ -70,6 +70,7 @@ func NewContext(cfg Config) (*Context, error) {
 	c.params = C.whisper_full_default_params(C.WHISPER_SAMPLING_GREEDY)
 	c.params.no_context = C.bool(c.cfg.NoContext)
 	c.params.n_threads = C.int(c.cfg.NumThreads)
+	c.params.language = C.CString("auto")
 
 	return &c, nil
 }
@@ -79,6 +80,7 @@ func (c *Context) Destroy() error {
 		return fmt.Errorf("context is not initialized")
 	}
 	C.whisper_free(c.ctx)
+	C.free(unsafe.Pointer(c.params.language))
 	c.ctx = nil
 	return nil
 }

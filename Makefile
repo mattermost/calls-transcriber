@@ -41,6 +41,9 @@ WHISPER_SHA ?= "b2e34e65777033584fa6769a366cdb0228bc5c7da81e58a5e8dc0ce94d0fb54e
 # Opus
 OPUS_VERSION ?= "1.4"
 OPUS_SHA ?= "c9b32b4253be5ae63d1ff16eea06b94b5f0f2951b7a02aceef58e3a3ce49c51f"
+# ONNX Runtime
+ONNX_VERSION ?= "1.16.2"
+ONNX_SHA ?= "70c769771ad4b6d63b87ca1f62d3f11e998ea0b9d738d6bbdd6a5e6d8c1deb31"
 
 ## Docker Variables
 # Docker executable
@@ -56,7 +59,7 @@ DOCKER_REGISTRY_REPO    ?= mattermost/${APP_NAME}-daily
 DOCKER_USER             ?= user
 DOCKER_PASSWORD         ?= password
 ## Docker Images
-DOCKER_IMAGE_GO         += "golang:${GO_VERSION}@sha256:27b021393d0e0dfffc6cd6cca5e7836ac59f5ac98724c5d6b3b0a82199d275c5"
+DOCKER_IMAGE_GO         += "golang:${GO_VERSION}@sha256:337543447173c2238c78d4851456760dcc57c1dfa8c3bcd94cbee8b0f7b32ad0"
 DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.54.2@sha256:abe731fe6bb335a30eab303a41dd5c2b630bb174372a4da08e3d42eab5324127"
 DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3b5e7b21e9dafd0cb19732a276f901f0fdee243ec1f3b"
 DOCKER_IMAGE_COSIGN     += "bitnami/cosign:1.8.0@sha256:8c2c61c546258fffff18b47bb82a65af6142007306b737129a7bd5429d53629a"
@@ -89,7 +92,7 @@ GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.go
 GO_BUILD_PLATFORMS           ?= linux-amd64
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))
 # Build options
-GO_BUILD_OPTS                += -mod=readonly -trimpath
+GO_BUILD_OPTS                += -mod=readonly -trimpath -buildmode=pie
 GO_TEST_OPTS                 += -mod=readonly -failfast -race
 # Temporary folder to output compiled binaries artifacts
 GO_OUT_BIN_DIR               := ./dist
@@ -170,6 +173,8 @@ docker-build: ## to build the docker image
 	--build-arg OPUS_SHA=${OPUS_SHA} \
 	--build-arg WHISPER_VERSION=${WHISPER_VERSION} \
 	--build-arg WHISPER_SHA=${WHISPER_SHA} \
+	--build-arg ONNX_VERSION=${ONNX_VERSION} \
+	--build-arg ONNX_SHA=${ONNX_SHA} \
 	-f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
@@ -298,7 +303,7 @@ go-build-docker: # to build binaries under a controlled docker dedicated go cont
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} || ${FAIL}
+	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} ${ONNX_VERSION} ${ONNX_SHA} || ${FAIL}
 	@$(OK) go build docker
 
 .PHONY: go-run
@@ -315,7 +320,7 @@ go-test: ## to run tests
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" || ${FAIL}
+	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" "${ONNX_VERSION}" "${ONNX_SHA}" || ${FAIL}
 	@$(OK) testing
 
 .PHONY: go-mod-check
@@ -342,7 +347,7 @@ go-lint: ## to lint go code
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
 	${DOCKER_IMAGE_GOLINT} \
-	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" || ${FAIL}
+	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" "${ONNX_VERSION}" "${ONNX_SHA}" || ${FAIL}
 	@$(OK) App linting
 
 .PHONY: go-fmt
