@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 )
 
 var idRE = regexp.MustCompile(`^[a-z0-9]{26}$`)
@@ -42,6 +44,11 @@ const (
 	TranscribeAPIOpenAIWhisper = "openai/whisper"
 )
 
+type OutputOptions struct {
+	WebVTT transcribe.WebVTTOptions
+	Text   transcribe.TextOptions
+}
+
 type CallTranscriberConfig struct {
 	// input config
 	SiteURL         string
@@ -55,6 +62,7 @@ type CallTranscriberConfig struct {
 	TranscribeAPI TranscribeAPI
 	ModelSize     ModelSize
 	OutputFormat  OutputFormat
+	OutputOptions OutputOptions
 }
 
 func (p ModelSize) IsValid() bool {
@@ -129,7 +137,11 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
 	}
 
-	return nil
+	if err := cfg.OutputOptions.Text.IsValid(); err != nil {
+		return err
+	}
+
+	return cfg.OutputOptions.WebVTT.IsValid()
 }
 
 func (cfg *CallTranscriberConfig) SetDefaults() {
@@ -148,6 +160,14 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 	if cfg.NumThreads == 0 {
 		cfg.NumThreads = max(1, runtime.NumCPU()/2)
 	}
+
+	if cfg.OutputOptions.WebVTT.IsEmpty() {
+		cfg.OutputOptions.WebVTT.SetDefaults()
+	}
+
+	if cfg.OutputOptions.Text.IsEmpty() {
+		cfg.OutputOptions.Text.SetDefaults()
+	}
 }
 
 func (cfg CallTranscriberConfig) ToEnv() []string {
@@ -155,7 +175,7 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		return nil
 	}
 
-	return []string{
+	vars := []string{
 		fmt.Sprintf("SITE_URL=%s", cfg.SiteURL),
 		fmt.Sprintf("CALL_ID=%s", cfg.CallID),
 		fmt.Sprintf("POST_ID=%s", cfg.PostID),
@@ -166,6 +186,11 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("OUTPUT_FORMAT=%s", cfg.OutputFormat),
 		fmt.Sprintf("NUM_THREADS=%d", cfg.NumThreads),
 	}
+
+	vars = append(vars, cfg.OutputOptions.WebVTT.ToEnv()...)
+	vars = append(vars, cfg.OutputOptions.Text.ToEnv()...)
+
+	return vars
 }
 
 func (cfg CallTranscriberConfig) ToMap() map[string]any {
@@ -173,7 +198,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		return nil
 	}
 
-	return map[string]any{
+	m := map[string]any{
 		"site_url":         cfg.SiteURL,
 		"call_id":          cfg.CallID,
 		"post_id":          cfg.PostID,
@@ -184,6 +209,15 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		"output_format":    cfg.OutputFormat,
 		"num_threads":      cfg.NumThreads,
 	}
+
+	for k, v := range cfg.OutputOptions.WebVTT.ToMap() {
+		m[k] = v
+	}
+	for k, v := range cfg.OutputOptions.Text.ToMap() {
+		m[k] = v
+	}
+
+	return m
 }
 
 func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConfig {
@@ -217,10 +251,14 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	} else {
 		cfg.OutputFormat, _ = m["output_format"].(OutputFormat)
 	}
+
+	cfg.OutputOptions.WebVTT.FromMap(m)
+	cfg.OutputOptions.Text.FromMap(m)
+
 	return cfg
 }
 
-func LoadFromEnv() (CallTranscriberConfig, error) {
+func FromEnv() (CallTranscriberConfig, error) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = strings.TrimSuffix(os.Getenv("SITE_URL"), "/")
 	cfg.CallID = os.Getenv("CALL_ID")
@@ -240,6 +278,9 @@ func LoadFromEnv() (CallTranscriberConfig, error) {
 	if val := os.Getenv("OUTPUT_FORMAT"); val != "" {
 		cfg.OutputFormat = OutputFormat(val)
 	}
+
+	cfg.OutputOptions.WebVTT.FromEnv()
+	cfg.OutputOptions.Text.FromEnv()
 
 	return cfg, nil
 }

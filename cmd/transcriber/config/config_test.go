@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,6 +117,52 @@ func TestConfigIsValid(t *testing.T) {
 			expectedError: fmt.Sprintf("NumThreads should be in the range [1, %d]", runtime.NumCPU()),
 		},
 		{
+			name: "invalid SilenceThresholdMs",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
+				NumThreads:      1,
+				OutputOptions: OutputOptions{
+					Text: transcribe.TextOptions{
+						CompactOptions: transcribe.TextCompactOptions{
+							SilenceThresholdMs:   0,
+							MaxSegmentDurationMs: 10000,
+						},
+					},
+				},
+			},
+			expectedError: "SilenceThresholdMs should be a positive number",
+		},
+		{
+			name: "invalid MaxSegmentDurationMs",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
+				NumThreads:      1,
+				OutputOptions: OutputOptions{
+					Text: transcribe.TextOptions{
+						CompactOptions: transcribe.TextCompactOptions{
+							SilenceThresholdMs:   2000,
+							MaxSegmentDurationMs: 0,
+						},
+					},
+				},
+			},
+			expectedError: "MaxSegmentDurationMs should be a positive number",
+		},
+		{
 			name: "valid config",
 			cfg: CallTranscriberConfig{
 				SiteURL:         "http://localhost:8065",
@@ -126,6 +174,14 @@ func TestConfigIsValid(t *testing.T) {
 				ModelSize:       ModelSizeMedium,
 				OutputFormat:    OutputFormatVTT,
 				NumThreads:      1,
+				OutputOptions: OutputOptions{
+					Text: transcribe.TextOptions{
+						CompactOptions: transcribe.TextCompactOptions{
+							SilenceThresholdMs:   2000,
+							MaxSegmentDurationMs: 10000,
+						},
+					},
+				},
 			},
 		},
 	}
@@ -151,6 +207,17 @@ func TestConfigSetDefaults(t *testing.T) {
 			ModelSize:     ModelSizeDefault,
 			OutputFormat:  OutputFormatDefault,
 			NumThreads:    max(1, runtime.NumCPU()/2),
+			OutputOptions: OutputOptions{
+				WebVTT: transcribe.WebVTTOptions{
+					OmitSpeaker: false,
+				},
+				Text: transcribe.TextOptions{
+					CompactOptions: transcribe.TextCompactOptions{
+						SilenceThresholdMs:   2000,
+						MaxSegmentDurationMs: 10000,
+					},
+				},
+			},
 		}, cfg)
 	})
 
@@ -164,13 +231,24 @@ func TestConfigSetDefaults(t *testing.T) {
 			ModelSize:     ModelSizeMedium,
 			OutputFormat:  OutputFormatDefault,
 			NumThreads:    max(1, runtime.NumCPU()/2),
+			OutputOptions: OutputOptions{
+				WebVTT: transcribe.WebVTTOptions{
+					OmitSpeaker: false,
+				},
+				Text: transcribe.TextOptions{
+					CompactOptions: transcribe.TextCompactOptions{
+						SilenceThresholdMs:   2000,
+						MaxSegmentDurationMs: 10000,
+					},
+				},
+			},
 		}, cfg)
 	})
 }
 
-func TestLoadFromEnv(t *testing.T) {
+func TestFromEnv(t *testing.T) {
 	t.Run("no env set", func(t *testing.T) {
-		cfg, err := LoadFromEnv()
+		cfg, err := FromEnv()
 		require.NoError(t, err)
 		require.Empty(t, cfg)
 	})
@@ -192,7 +270,14 @@ func TestLoadFromEnv(t *testing.T) {
 		defer os.Unsetenv("MODEL_SIZE")
 		os.Setenv("NUM_THREADS", "1")
 		defer os.Unsetenv("NUM_THREADS")
-		cfg, err := LoadFromEnv()
+		os.Setenv("WEBVTT_OMIT_SPEAKER", "true")
+		defer os.Unsetenv("WEBVTT_OMIT_SPEAKER")
+		os.Setenv("TEXT_COMPACT_SILENCE_THRESHOLD_MS", "200")
+		defer os.Unsetenv("TEXT_COMPACT_SILENCE_THRESHOLD_MS")
+		os.Setenv("TEXT_COMPACT_MAX_SEGMENT_DURATION_MS", "1000")
+		defer os.Unsetenv("TEXT_COMPACT_MAX_SEGMENT_DURATION_MS")
+
+		cfg, err := FromEnv()
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
 		require.Equal(t, CallTranscriberConfig{
@@ -204,6 +289,17 @@ func TestLoadFromEnv(t *testing.T) {
 			TranscribeAPI:   TranscribeAPIWhisperCPP,
 			ModelSize:       ModelSizeMedium,
 			NumThreads:      1,
+			OutputOptions: OutputOptions{
+				WebVTT: transcribe.WebVTTOptions{
+					OmitSpeaker: true,
+				},
+				Text: transcribe.TextOptions{
+					CompactOptions: transcribe.TextCompactOptions{
+						SilenceThresholdMs:   200,
+						MaxSegmentDurationMs: 1000,
+					},
+				},
+			},
 		}, cfg)
 	})
 }
@@ -227,6 +323,9 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 		"MODEL_SIZE=base",
 		"OUTPUT_FORMAT=vtt",
 		"NUM_THREADS=1",
+		"WEBVTT_OMIT_SPEAKER=false",
+		"TEXT_COMPACT_SILENCE_THRESHOLD_MS=2000",
+		"TEXT_COMPACT_MAX_SEGMENT_DURATION_MS=10000",
 	}, cfg.ToEnv())
 }
 
@@ -238,6 +337,7 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	cfg.AuthToken = "qj75unbsef83ik9p7ueypb6iyw"
 	cfg.TranscriptionID = "on5yfih5etn5m8rfdidamc1oxa"
 	cfg.NumThreads = 1
+	cfg.OutputOptions.WebVTT.OmitSpeaker = true
 	cfg.SetDefaults()
 
 	t.Run("default config", func(t *testing.T) {
