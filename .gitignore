@@ -1,5 +1,11 @@
 # binaries
 dist/
 
+# whisper models
+/models
+
+# temporary track files
+tracks/
+
 .config.env*
 *.vim
