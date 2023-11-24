@@ -51,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cfg, err := config.LoadFromEnv()
+	cfg, err := config.FromEnv()
 	if err != nil {
 		slog.Error("failed to load config", slog.String("err", err.Error()))
 		os.Exit(1)

@@ -80,13 +80,11 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 	}
 	defer textFile.Close()
 
-	if err := tr.WebVTT(vttFile, transcribe.WebVTTOptions{
-		OmitSpeaker: false,
-	}); err != nil {
+	if err := tr.WebVTT(vttFile, t.cfg.OutputOptions.WebVTT); err != nil {
 		return fmt.Errorf("failed to write WebVTT file: %w", err)
 	}
 
-	if err := tr.Text(textFile); err != nil {
+	if err := tr.Text(textFile, t.cfg.OutputOptions.Text); err != nil {
 		return fmt.Errorf("failed to write text file: %w", err)
 	}
 

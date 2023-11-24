@@ -407,7 +407,7 @@ func TestText(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		var tr Transcription
 		var b strings.Builder
-		err := tr.Text(&b)
+		err := tr.Text(&b, TextOptions{})
 		require.NoError(t, err)
 		require.Empty(t, b.String())
 	})
@@ -486,7 +486,83 @@ A4
 SpeakerB
 B2
 `
-		err := tr.Text(&b)
+		err := tr.Text(&b, TextOptions{})
+		require.NoError(t, err)
+		require.Equal(t, expected, b.String())
+	})
+
+	t.Run("compact", func(t *testing.T) {
+		tr := Transcription{
+			TrackTranscription{
+				Speaker: "SpeakerA",
+				Segments: []Segment{
+					{
+						StartTS: 0,
+						EndTS:   1000,
+						Text:    "A1",
+					},
+					{
+						StartTS: 2000,
+						EndTS:   3000,
+						Text:    "A2",
+					},
+				},
+			},
+			TrackTranscription{
+				Speaker: "SpeakerA",
+				Segments: []Segment{
+					{
+						StartTS: 4000,
+						EndTS:   5000,
+						Text:    "A3",
+					},
+					{
+						StartTS: 5000,
+						EndTS:   6000,
+						Text:    "A4",
+					},
+				},
+			},
+			TrackTranscription{
+				Speaker: "SpeakerB",
+				Segments: []Segment{
+					{
+						StartTS: 3000,
+						EndTS:   4000,
+						Text:    "B1",
+					},
+					{
+						StartTS: 6000,
+						EndTS:   7000,
+						Text:    " B2 ",
+					},
+				},
+			},
+		}
+
+		var b strings.Builder
+		expected := `00:00:00 -> 00:00:03
+SpeakerA
+A1 A2
+
+00:00:03 -> 00:00:04
+SpeakerB
+B1
+
+00:00:04 -> 00:00:06
+SpeakerA
+A3 A4
+
+00:00:06 -> 00:00:07
+SpeakerB
+B2
+`
+		err := tr.Text(&b, TextOptions{
+			CompactOptions: TextCompactOptions{
+				SilenceThresholdMs:   2000,
+				MaxSegmentDurationMs: 10000,
+			},
+		})
 		require.NoError(t, err)
 		require.Equal(t, expected, b.String())
 	})
@@ -659,4 +735,250 @@ func TestSanitizeSegment(t *testing.T) {
 			require.Equal(t, tc.expected, tc.input)
 		})
 	}
+}
+
+func TestCompact(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		require.Empty(t, compactSegments(nil, TextCompactOptions{
+			SilenceThresholdMs:   1000,
+			MaxSegmentDurationMs: 1000,
+		}))
+		require.Empty(t, compactSegments([]namedSegment{}, TextCompactOptions{
+			SilenceThresholdMs:   1000,
+			MaxSegmentDurationMs: 1000,
+		}))
+	})
+
+	t.Run("single segment", func(t *testing.T) {
+		segments := []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   100,
+					Text:    "test",
+				},
+			},
+		}
+		require.Equal(t, segments, compactSegments(segments, TextCompactOptions{
+			SilenceThresholdMs:   1000,
+			MaxSegmentDurationMs: 1000,
+		}))
+	})
+
+	t.Run("single speaker", func(t *testing.T) {
+		segments := []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   100,
+					Text:    "test1",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 100,
+					EndTS:   200,
+					Text:    "test2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 200,
+					EndTS:   300,
+					Text:    "test3",
+				},
+			},
+		}
+		require.Equal(t, []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   300,
+					Text:    "test1 test2 test3",
+				},
+			},
+		}, compactSegments(segments, TextCompactOptions{
+			SilenceThresholdMs:   1000,
+			MaxSegmentDurationMs: 1000,
+		}))
+	})
+
+	t.Run("silence threshold", func(t *testing.T) {
+		segments := []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   100,
+					Text:    "test1",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 100,
+					EndTS:   200,
+					Text:    "test2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 500,
+					EndTS:   600,
+					Text:    "test3",
+				},
+			},
+		}
+		require.Equal(t, []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   200,
+					Text:    "test1 test2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 500,
+					EndTS:   600,
+					Text:    "test3",
+				},
+			},
+		}, compactSegments(segments, TextCompactOptions{
+			SilenceThresholdMs:   100,
+			MaxSegmentDurationMs: 200,
+		}))
+	})
+
+	t.Run("max duration", func(t *testing.T) {
+		segments := []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   100,
+					Text:    "test1",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 100,
+					EndTS:   200,
+					Text:    "test2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 200,
+					EndTS:   300,
+					Text:    "test3",
+				},
+			},
+		}
+		require.Equal(t, []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   200,
+					Text:    "test1 test2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 200,
+					EndTS:   300,
+					Text:    "test3",
+				},
+			},
+		}, compactSegments(segments, TextCompactOptions{
+			SilenceThresholdMs:   100,
+			MaxSegmentDurationMs: 200,
+		}))
+	})
+
+	t.Run("speaker change", func(t *testing.T) {
+		segments := []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   100,
+					Text:    "testA1",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 100,
+					EndTS:   200,
+					Text:    "testA2",
+				},
+			},
+			{
+				Speaker: "B",
+				Segment: Segment{
+					StartTS: 100,
+					EndTS:   200,
+					Text:    "testB1",
+				},
+			},
+			{
+				Speaker: "B",
+				Segment: Segment{
+					StartTS: 200,
+					EndTS:   300,
+					Text:    "testB2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 200,
+					EndTS:   300,
+					Text:    "testA3",
+				},
+			},
+		}
+		require.Equal(t, []namedSegment{
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 0,
+					EndTS:   200,
+					Text:    "testA1 testA2",
+				},
+			},
+			{
+				Speaker: "B",
+				Segment: Segment{
+					StartTS: 100,
+					EndTS:   300,
+					Text:    "testB1 testB2",
+				},
+			},
+			{
+				Speaker: "A",
+				Segment: Segment{
+					StartTS: 200,
+					EndTS:   300,
+					Text:    "testA3",
+				},
+			},
+		}, compactSegments(segments, TextCompactOptions{
+			SilenceThresholdMs:   1000,
+			MaxSegmentDurationMs: 1000,
+		}))
+	})
 }

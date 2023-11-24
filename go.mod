@@ -5,7 +5,7 @@ go 1.21.4
 require (
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.3-0.20231103204030-06bd54bcfa67
 	github.com/mattermost/mattermost/server/public v0.0.6
-	github.com/mattermost/rtcd v0.12.1-0.20231114225901-6fcc49a7d5d3
+	github.com/mattermost/rtcd v0.12.1-0.20231121174414-6a5686281335
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.8.3
 	github.com/pion/webrtc/v3 v3.2.21
