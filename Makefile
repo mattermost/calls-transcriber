@@ -38,6 +38,7 @@ ARCH                    ?= amd64
 # Whisper.cpp
 WHISPER_VERSION ?= "1.4.0"
 WHISPER_SHA ?= "b2e34e65777033584fa6769a366cdb0228bc5c7da81e58a5e8dc0ce94d0fb54e"
+WHISPER_MODELS ?= "tiny base small"
 # Opus
 OPUS_VERSION ?= "1.4"
 OPUS_SHA ?= "c9b32b4253be5ae63d1ff16eea06b94b5f0f2951b7a02aceef58e3a3ce49c51f"
@@ -173,6 +174,7 @@ docker-build: ## to build the docker image
 	--build-arg OPUS_SHA=${OPUS_SHA} \
 	--build-arg WHISPER_VERSION=${WHISPER_VERSION} \
 	--build-arg WHISPER_SHA=${WHISPER_SHA} \
+	--build-arg WHISPER_MODELS=${WHISPER_MODELS} \
 	--build-arg ONNX_VERSION=${ONNX_VERSION} \
 	--build-arg ONNX_SHA=${ONNX_SHA} \
 	-f ${DOCKER_FILE} . \
@@ -303,7 +305,7 @@ go-build-docker: # to build binaries under a controlled docker dedicated go cont
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} ${ONNX_VERSION} ${ONNX_SHA} || ${FAIL}
+	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} ${WHISPER_MODELS} ${ONNX_VERSION} ${ONNX_SHA} || ${FAIL}
 	@$(OK) go build docker
 
 .PHONY: go-run
