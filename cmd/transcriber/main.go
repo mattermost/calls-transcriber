@@ -42,7 +42,7 @@ func main() {
 		AddSource:   true,
 		Level:       slog.LevelDebug,
 		ReplaceAttr: slogReplaceAttr,
-	}))
+	})).With("trID", os.Getenv("TRANSCRIPTION_ID"))
 	slog.SetDefault(logger)
 
 	pid := os.Getpid()

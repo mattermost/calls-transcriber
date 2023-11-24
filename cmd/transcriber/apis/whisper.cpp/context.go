@@ -7,6 +7,7 @@ import "C"
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"runtime"
 	"unsafe"
@@ -56,6 +57,8 @@ func NewContext(cfg Config) (*Context, error) {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
 	c.cfg = cfg
+
+	slog.Debug("creating transcription context", slog.Any("cfg", cfg))
 
 	// TODO: verify whether there's any potential optimizations
 	// that could be made by using lower level initialization methods
