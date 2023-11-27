@@ -17,7 +17,7 @@ ONNX_INCLUDE_PATH="/tmp/onnxruntime-linux-x64-${ONNX_VERSION}/include"
 ONNX_LIBRARY_PATH="/tmp/onnxruntime-linux-x64-${ONNX_VERSION}/lib"
 
 bash ./build/prepare_deps.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "tiny" ${ONNX_VERSION} ${ONNX_SHA} && \
-cp ./models/silero_vad.onnx /tmp/whisper.cpp-${WHISPER_VERSION}/models && \
+cp /app/models/silero_vad.onnx /tmp/whisper.cpp-${WHISPER_VERSION}/models && \
 MODELS_DIR=/tmp/whisper.cpp-${WHISPER_VERSION}/models \
 C_INCLUDE_PATH="${OPUS_INCLUDE_PATH}:${WHISPER_INCLUDE_PATH}:${ONNX_INCLUDE_PATH}" \
 LIBRARY_PATH="${OPUS_LIBRARY_PATH}:${WHISPER_LIBRARY_PATH}:${ONNX_LIBRARY_PATH}" \
