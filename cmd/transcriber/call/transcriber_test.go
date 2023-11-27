@@ -27,6 +27,7 @@ func TestTranscribeTrack(t *testing.T) {
 		TranscriptionID: "67t5u6cmtfbb7jug739d43xa9e",
 		AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 		NumThreads:      1,
+		ModelSize:       config.ModelSizeTiny,
 	}
 	cfg.SetDefaults()
 	tr, err := NewTranscriber(cfg)
