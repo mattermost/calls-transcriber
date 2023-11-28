@@ -273,11 +273,16 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 			continue
 		}
 
-		if hdr.GranulePosition > prevGP+uint64(trackInFrameSize) {
-			slog.Debug("gap in audio samples", slog.Duration("gap", time.Duration((hdr.GranulePosition-prevGP)/trackInAudioSamplesPerMs)*time.Millisecond))
-			samples = append(samples, trackTimedSamples{
-				startTS: int64(hdr.GranulePosition) / trackInAudioSamplesPerMs,
-			})
+		if hdr.GranulePosition > prevGP+trackInFrameSize {
+			gap := time.Duration((hdr.GranulePosition-prevGP)/trackInAudioSamplesPerMs) * time.Millisecond
+			slog.Debug("gap in audio samples", slog.Duration("gap", gap))
+			// If there's enough of a gap in the audio (audioGapThreshold) we split and
+			// update the start time accordingly.
+			if gap > audioGapThreshold {
+				samples = append(samples, trackTimedSamples{
+					startTS: int64(hdr.GranulePosition) / trackInAudioSamplesPerMs,
+				})
+			}
 		}
 		prevGP = hdr.GranulePosition
 
@@ -342,11 +347,22 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 
 	var speechSamples []trackTimedSamples
 	for _, ts := range samples {
-		segments, err := sd.Detect(ts.pcm)
-		if err != nil {
-			slog.Error("failed to detect speech",
+		// We need to reset the speech detector's state from one chunk of samples
+		// to the next.
+		if err := sd.Reset(); err != nil {
+			slog.Error("failed to reset speech detector",
 				slog.String("err", err.Error()),
 				slog.String("trackID", ctx.trackID))
+		}
+
+		segments, err := sd.Detect(ts.pcm)
+		if err != nil {
+			slog.Warn("failed to detect speech",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
+
+			// As a fallback in case of failure, we keep the original samples.
+			speechSamples = append(speechSamples, ts)
 			continue
 		}
 		slog.Debug("speech detection done", slog.Any("segments", segments))
