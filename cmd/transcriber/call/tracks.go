@@ -192,7 +192,9 @@ func (t *Transcriber) handleClose() error {
 
 		samplesDur += dur
 
-		tr = append(tr, trackTr)
+		if len(trackTr.Segments) > 0 {
+			tr = append(tr, trackTr)
+		}
 	}
 
 	if len(tr) == 0 {
