@@ -17,6 +17,7 @@ import (
 
 const (
 	startTimeout = 30 * time.Second
+	stopTimeout  = 10 * time.Second
 )
 
 func slogReplaceAttr(_ []string, a slog.Attr) slog.Attr {
@@ -73,8 +74,20 @@ func main() {
 			slog.Error("failed to report job failure", slog.String("err", err.Error()))
 		}
 
+		// cleaning up
+		stopCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
+		defer cancel()
+		if err := transcriber.Stop(stopCtx); err != nil {
+			slog.Error("failed to stop transcriber", slog.String("err", err.Error()))
+		}
+
 		slog.Error("failed to start transcriber", slog.String("err", err.Error()))
-		os.Exit(1)
+
+		// Although an error case, if we fail to start we are not losing any
+		// transcript data so the associated resources (e.g. container, volume) can be safely deleted.
+		// This is signaled to the calling layer (calls-offloader) by exiting with
+		// a success code.
+		os.Exit(0)
 	}
 
 	slog.Info("transcriber has started")
