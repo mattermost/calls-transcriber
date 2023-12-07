@@ -201,10 +201,15 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		}
 
 		// attaching post VTT and text formatted files.
-		payload, err = json.Marshal(public.JobInfo{
-			JobID:   t.cfg.TranscriptionID,
-			FileIDs: []string{vttFi.Id, textFi.Id},
-			PostID:  t.cfg.PostID,
+		payload, err = json.Marshal(public.TranscribingJobInfo{
+			JobID:  t.cfg.TranscriptionID,
+			PostID: t.cfg.PostID,
+			Transcriptions: []public.Transcription{
+				{
+					Language: tr.Language(),
+					FileIDs:  []string{vttFi.Id, textFi.Id},
+				},
+			},
 		})
 		if err != nil {
 			slog.Error("failed to encode payload", slog.String("err", err.Error()))

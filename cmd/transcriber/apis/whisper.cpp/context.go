@@ -88,15 +88,17 @@ func (c *Context) Destroy() error {
 	return nil
 }
 
-func (c *Context) Transcribe(samples []float32) ([]transcribe.Segment, error) {
+func (c *Context) Transcribe(samples []float32) ([]transcribe.Segment, string, error) {
 	if len(samples) == 0 {
-		return nil, fmt.Errorf("samples should not be empty")
+		return nil, "", fmt.Errorf("samples should not be empty")
 	}
 
 	ret := C.whisper_full(c.ctx, c.params, (*C.float)(&samples[0]), C.int(len(samples)))
 	if ret != 0 {
-		return nil, fmt.Errorf("whisper_full failed with code %d", ret)
+		return nil, "", fmt.Errorf("whisper_full failed with code %d", ret)
 	}
+
+	lang := C.GoString(C.whisper_lang_str(C.whisper_full_lang_id(c.ctx)))
 
 	n := int(C.whisper_full_n_segments(c.ctx))
 	segments := make([]transcribe.Segment, n)
@@ -106,5 +108,5 @@ func (c *Context) Transcribe(samples []float32) ([]transcribe.Segment, error) {
 		segments[i].EndTS = int64(C.whisper_full_get_segment_t1(c.ctx, C.int(i))) * 10
 	}
 
-	return segments, nil
+	return segments, lang, nil
 }
