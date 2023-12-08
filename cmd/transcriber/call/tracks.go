@@ -402,12 +402,16 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 
 	var totalDur time.Duration
 	for _, ts := range speechSamples {
-		segments, err := transcriber.Transcribe(ts.pcm)
+		segments, lang, err := transcriber.Transcribe(ts.pcm)
 		if err != nil {
 			slog.Error("failed to transcribe audio samples",
 				slog.String("err", err.Error()),
 				slog.String("trackID", ctx.trackID))
 			continue
+		}
+
+		if lang != "" && trackTr.Language == "" {
+			trackTr.Language = lang
 		}
 
 		samplesDur := time.Duration(len(ts.pcm)/trackOutAudioSamplesPerMs) * time.Millisecond
