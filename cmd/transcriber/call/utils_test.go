@@ -124,8 +124,9 @@ All right, we should be recording. Welcome everyone, developers meeting for Dece
 `))
 	require.NoError(t, err)
 
+	dataDir := os.Getenv("DATA_DIR")
 	os.Setenv("DATA_DIR", filepath.Dir(vttFile.Name()))
-	defer os.Unsetenv("DATA_DIR")
+	defer os.Setenv("DATA_DIR", dataDir)
 
 	maxUploadRetryAttempts = 2
 
