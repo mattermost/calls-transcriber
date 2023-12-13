@@ -98,7 +98,7 @@ func TestPublishTranscriptions(t *testing.T) {
 		}
 
 		err := tr.publishTranscription(transcribe.Transcription{})
-		require.EqualError(t, err, "failed to open output file: open tracks/Call_Test.vtt: no such file or directory")
+		require.EqualError(t, err, fmt.Sprintf("failed to open output file: open %s: no such file or directory", filepath.Join(getDataDir(), "Call_Test.vtt")))
 	})
 
 	vttFile, err := os.CreateTemp("", "Call_Test.vtt")
