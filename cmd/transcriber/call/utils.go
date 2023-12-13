@@ -21,12 +21,12 @@ import (
 const (
 	httpRequestTimeout         = 5 * time.Second
 	httpUploadTimeout          = 10 * time.Second
-	maxUploadRetryAttempts     = 5
 	uploadRetryAttemptWaitTime = 5 * time.Second
 )
 
 var (
 	filenameSanitizationRE = regexp.MustCompile(`[\\:*?\"<>|\n\s/]`)
+	maxUploadRetryAttempts = 5
 )
 
 func (t *Transcriber) getUserForSession(sessionID string) (*model.User, error) {
@@ -68,16 +68,26 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		return fmt.Errorf("failed to get filename for call: %w", err)
 	}
 
-	vttFile, err := os.OpenFile(filepath.Join(getDataDir(), fname+".vtt"), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
+	var vttFile *os.File
+	var textFile *os.File
+	openFiles := func() error {
+		vttFile, err = os.OpenFile(filepath.Join(getDataDir(), fname+".vtt"), os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return fmt.Errorf("failed to open output file: %w", err)
+		}
+
+		textFile, err = os.OpenFile(filepath.Join(getDataDir(), fname+".txt"), os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			return fmt.Errorf("failed to open output file: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := openFiles(); err != nil {
+		return err
 	}
 	defer vttFile.Close()
-
-	textFile, err := os.OpenFile(filepath.Join(getDataDir(), fname+".txt"), os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
-	}
 	defer textFile.Close()
 
 	if err := tr.WebVTT(vttFile, t.cfg.OutputOptions.WebVTT); err != nil {
@@ -108,10 +118,16 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 
 	apiURL := fmt.Sprintf("%s/plugins/%s/bot", t.apiClient.URL, pluginID)
 
+	var lastErr error
 	for i := 0; i < maxUploadRetryAttempts; i++ {
 		if i > 0 {
 			slog.Error("publishTranscription failed", slog.Duration("reattempt_time", uploadRetryAttemptWaitTime))
 			time.Sleep(uploadRetryAttemptWaitTime)
+			if err := openFiles(); err != nil {
+				return fmt.Errorf("failed to open files: %w", err)
+			}
+			defer vttFile.Close()
+			defer textFile.Close()
 		}
 
 		// VTT format upload
@@ -131,6 +147,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		resp, err := t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL+"/uploads", payload, "")
 		if err != nil {
 			slog.Error("failed to create upload", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 		defer resp.Body.Close()
@@ -138,6 +155,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 
 		if err := json.NewDecoder(resp.Body).Decode(&us); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 
@@ -146,6 +164,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, vttFile, nil)
 		if err != nil {
 			slog.Error("failed to upload data", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 		defer resp.Body.Close()
@@ -154,6 +173,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		var vttFi model.FileInfo
 		if err := json.NewDecoder(resp.Body).Decode(&vttFi); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 
@@ -174,6 +194,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		resp, err = t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL+"/uploads", payload, "")
 		if err != nil {
 			slog.Error("failed to create upload", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 		defer resp.Body.Close()
@@ -181,6 +202,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 
 		if err := json.NewDecoder(resp.Body).Decode(&us); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 
@@ -189,6 +211,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, textFile, nil)
 		if err != nil {
 			slog.Error("failed to upload data", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 		defer resp.Body.Close()
@@ -197,6 +220,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		var textFi model.FileInfo
 		if err := json.NewDecoder(resp.Body).Decode(&textFi); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 
@@ -213,6 +237,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		})
 		if err != nil {
 			slog.Error("failed to encode payload", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 
@@ -222,6 +247,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		resp, err = t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, url, payload, "")
 		if err != nil {
 			slog.Error("failed to post transcription", slog.String("err", err.Error()))
+			lastErr = err
 			continue
 		}
 		defer resp.Body.Close()
@@ -229,7 +255,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		return nil
 	}
 
-	return fmt.Errorf("maximum attempts reached")
+	return fmt.Errorf("maximum attempts reached %w", lastErr)
 }
 
 func newTimeP(t time.Time) *time.Time {
