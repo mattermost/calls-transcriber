@@ -83,7 +83,7 @@ func (t *Transcriber) handleTrack(ctx any) error {
 // processLiveTrack saves the content of a voice track to a file for later processing.
 // This involves muxing the raw Opus packets into a OGG file with the
 // timings adjusted to account for any potential gaps due to mute/unmute sequences.
-func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID string, user *model.User) {
+func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user *model.User) {
 	ctx := trackContext{
 		trackID:   track.ID(),
 		sessionID: sessionID,
@@ -128,6 +128,13 @@ func (t *Transcriber) processLiveTrack(track *webrtc.TrackRemote, sessionID stri
 
 		// We start processing audio samples only when the recording process has successfully started.
 		if t.startTime.Load() == nil {
+			continue
+		}
+
+		// Ignore empty packets. This is important to avoid synchronization issues
+		// since empty packets are not written in the output OGG file (MM-56186) so
+		// they would cause the relative offset value (gap) to be lost.
+		if len(pkt.Payload) == 0 {
 			continue
 		}
 

@@ -1,19 +1,27 @@
 package call
 
 import (
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/ogg"
 
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"github.com/pion/interceptor"
+	"github.com/pion/rtp"
 	"github.com/stretchr/testify/require"
 )
 
-func TestTranscribeTrack(t *testing.T) {
+func setupTranscriberForTest(t *testing.T) *Transcriber {
+	t.Helper()
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
 		Level:     slog.LevelDebug,
@@ -33,6 +41,12 @@ func TestTranscribeTrack(t *testing.T) {
 	tr, err := NewTranscriber(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
+
+	return tr
+}
+
+func TestTranscribeTrack(t *testing.T) {
+	tr := setupTranscriberForTest(t)
 
 	t.Run("contiguous audio", func(t *testing.T) {
 		tctx := trackContext{
@@ -69,5 +83,122 @@ func TestTranscribeTrack(t *testing.T) {
 		require.Equal(t, " This is a test transcription sample.", trackTr.Segments[0].Text)
 		require.Equal(t, " with a gap in speech of a couple of seconds.", trackTr.Segments[1].Text)
 		require.Equal(t, 4700*time.Millisecond, d)
+	})
+}
+
+type trackRemoteMock struct {
+	id      string
+	readRTP func() (*rtp.Packet, interceptor.Attributes, error)
+}
+
+func (t *trackRemoteMock) ID() string {
+	return t.id
+}
+
+func (t *trackRemoteMock) ReadRTP() (*rtp.Packet, interceptor.Attributes, error) {
+	return t.readRTP()
+}
+
+func TestProcessLiveTrack(t *testing.T) {
+	tr := setupTranscriberForTest(t)
+
+	t.Run("empty payloads should not affect synchronization", func(t *testing.T) {
+		track := &trackRemoteMock{
+			id: "trackID",
+		}
+
+		pkts := []*rtp.Packet{
+			{
+				Header: rtp.Header{
+					Timestamp: 1000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 2000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 3000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			// Empty packet
+			{
+				Header: rtp.Header{
+					Timestamp: 4000,
+				},
+				Payload: []byte{},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 5000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+		}
+
+		var i int
+		track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
+			if i >= len(pkts) {
+				return nil, nil, io.EOF
+			}
+
+			defer func() { i++ }()
+
+			if i == 3 {
+				time.Sleep(2 * time.Second)
+			}
+
+			return pkts[i], nil, nil
+		}
+
+		sessionID := "sessionID"
+		user := &model.User{Id: "userID", Username: "testuser"}
+
+		dataDir := os.Getenv("DATA_DIR")
+		os.Setenv("DATA_DIR", os.TempDir())
+		defer os.Setenv("DATA_DIR", dataDir)
+
+		tr.liveTracksWg.Add(1)
+		tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
+		tr.processLiveTrack(track, sessionID, user)
+		close(tr.trackCtxs)
+		require.Len(t, tr.trackCtxs, 1)
+
+		trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+		defer trackFile.Close()
+		require.NoError(t, err)
+
+		oggReader, _, err := ogg.NewReaderWith(trackFile)
+		require.NoError(t, err)
+
+		// Metadata
+		_, hdr, err := oggReader.ParseNextPage()
+		require.NoError(t, err)
+		require.Equal(t, uint64(0), hdr.GranulePosition)
+
+		_, hdr, err = oggReader.ParseNextPage()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), hdr.GranulePosition)
+
+		_, hdr, err = oggReader.ParseNextPage()
+		require.NoError(t, err)
+		require.Equal(t, uint64(1001), hdr.GranulePosition)
+
+		_, hdr, err = oggReader.ParseNextPage()
+		require.NoError(t, err)
+		require.Equal(t, uint64(2001), hdr.GranulePosition)
+
+		// Check that empty packets don't affect synchronization.
+		_, hdr, err = oggReader.ParseNextPage()
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, hdr.GranulePosition, uint64(97001))
+
+		_, _, err = oggReader.ParseNextPage()
+		require.Equal(t, io.EOF, err)
 	})
 }
