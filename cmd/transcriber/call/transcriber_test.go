@@ -100,105 +100,299 @@ func (t *trackRemoteMock) ReadRTP() (*rtp.Packet, interceptor.Attributes, error)
 }
 
 func TestProcessLiveTrack(t *testing.T) {
-	tr := setupTranscriberForTest(t)
+	t.Run("synchronization", func(t *testing.T) {
+		t.Run("empty payloads", func(t *testing.T) {
+			tr := setupTranscriberForTest(t)
 
-	t.Run("empty payloads should not affect synchronization", func(t *testing.T) {
-		track := &trackRemoteMock{
-			id: "trackID",
-		}
-
-		pkts := []*rtp.Packet{
-			{
-				Header: rtp.Header{
-					Timestamp: 1000,
-				},
-				Payload: []byte{0x45, 0x45, 0x45},
-			},
-			{
-				Header: rtp.Header{
-					Timestamp: 2000,
-				},
-				Payload: []byte{0x45, 0x45, 0x45},
-			},
-			{
-				Header: rtp.Header{
-					Timestamp: 3000,
-				},
-				Payload: []byte{0x45, 0x45, 0x45},
-			},
-			// Empty packet
-			{
-				Header: rtp.Header{
-					Timestamp: 4000,
-				},
-				Payload: []byte{},
-			},
-			{
-				Header: rtp.Header{
-					Timestamp: 5000,
-				},
-				Payload: []byte{0x45, 0x45, 0x45},
-			},
-		}
-
-		var i int
-		track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
-			if i >= len(pkts) {
-				return nil, nil, io.EOF
+			track := &trackRemoteMock{
+				id: "trackID",
 			}
 
-			defer func() { i++ }()
-
-			if i == 3 {
-				time.Sleep(2 * time.Second)
+			pkts := []*rtp.Packet{
+				{
+					Header: rtp.Header{
+						Timestamp: 1000,
+					},
+					Payload: []byte{0x45, 0x45, 0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 2000,
+					},
+					Payload: []byte{0x45, 0x45, 0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 3000,
+					},
+					Payload: []byte{0x45, 0x45, 0x45},
+				},
+				// Empty packet
+				{
+					Header: rtp.Header{
+						Timestamp: 4000,
+					},
+					Payload: []byte{},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 5000,
+					},
+					Payload: []byte{0x45, 0x45, 0x45},
+				},
 			}
 
-			return pkts[i], nil, nil
-		}
+			var i int
+			track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
+				if i >= len(pkts) {
+					return nil, nil, io.EOF
+				}
 
-		sessionID := "sessionID"
-		user := &model.User{Id: "userID", Username: "testuser"}
+				defer func() { i++ }()
 
-		dataDir := os.Getenv("DATA_DIR")
-		os.Setenv("DATA_DIR", os.TempDir())
-		defer os.Setenv("DATA_DIR", dataDir)
+				if i == 3 {
+					time.Sleep(2 * time.Second)
+				}
 
-		tr.liveTracksWg.Add(1)
-		tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-		tr.processLiveTrack(track, sessionID, user)
-		close(tr.trackCtxs)
-		require.Len(t, tr.trackCtxs, 1)
+				return pkts[i], nil, nil
+			}
 
-		trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
-		defer trackFile.Close()
-		require.NoError(t, err)
+			sessionID := "sessionID"
+			user := &model.User{Id: "userID", Username: "testuser"}
 
-		oggReader, _, err := ogg.NewReaderWith(trackFile)
-		require.NoError(t, err)
+			dataDir := os.Getenv("DATA_DIR")
+			os.Setenv("DATA_DIR", os.TempDir())
+			defer os.Setenv("DATA_DIR", dataDir)
 
-		// Metadata
-		_, hdr, err := oggReader.ParseNextPage()
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), hdr.GranulePosition)
+			tr.liveTracksWg.Add(1)
+			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
+			tr.processLiveTrack(track, sessionID, user)
+			close(tr.trackCtxs)
+			require.Len(t, tr.trackCtxs, 1)
 
-		_, hdr, err = oggReader.ParseNextPage()
-		require.NoError(t, err)
-		require.Equal(t, uint64(1), hdr.GranulePosition)
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+			defer trackFile.Close()
+			require.NoError(t, err)
 
-		_, hdr, err = oggReader.ParseNextPage()
-		require.NoError(t, err)
-		require.Equal(t, uint64(1001), hdr.GranulePosition)
+			oggReader, _, err := ogg.NewReaderWith(trackFile)
+			require.NoError(t, err)
 
-		_, hdr, err = oggReader.ParseNextPage()
-		require.NoError(t, err)
-		require.Equal(t, uint64(2001), hdr.GranulePosition)
+			// Metadata
+			_, hdr, err := oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(0), hdr.GranulePosition)
 
-		// Check that empty packets don't affect synchronization.
-		_, hdr, err = oggReader.ParseNextPage()
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, hdr.GranulePosition, uint64(97001))
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), hdr.GranulePosition)
 
-		_, _, err = oggReader.ParseNextPage()
-		require.Equal(t, io.EOF, err)
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(1001), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(2001), hdr.GranulePosition)
+
+			// Check that empty packets don't affect synchronization.
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.GreaterOrEqual(t, hdr.GranulePosition, uint64(97001))
+
+			_, _, err = oggReader.ParseNextPage()
+			require.Equal(t, io.EOF, err)
+		})
+
+		t.Run("out of order packets", func(t *testing.T) {
+			tr := setupTranscriberForTest(t)
+
+			track := &trackRemoteMock{
+				id: "trackID",
+			}
+
+			pkts := []*rtp.Packet{
+				{
+					Header: rtp.Header{
+						Timestamp: 1000,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 3000,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 2000,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 4000,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 5000,
+					},
+					Payload: []byte{0x45},
+				},
+			}
+
+			var i int
+			track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
+				if i >= len(pkts) {
+					return nil, nil, io.EOF
+				}
+				defer func() { i++ }()
+				return pkts[i], nil, nil
+			}
+
+			sessionID := "sessionID"
+			user := &model.User{Id: "userID", Username: "testuser"}
+
+			dataDir := os.Getenv("DATA_DIR")
+			os.Setenv("DATA_DIR", os.TempDir())
+			defer os.Setenv("DATA_DIR", dataDir)
+
+			tr.liveTracksWg.Add(1)
+			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
+			tr.processLiveTrack(track, sessionID, user)
+			close(tr.trackCtxs)
+			require.Len(t, tr.trackCtxs, 1)
+
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+			defer trackFile.Close()
+			require.NoError(t, err)
+
+			oggReader, _, err := ogg.NewReaderWith(trackFile)
+			require.NoError(t, err)
+
+			// Metadata
+			_, hdr, err := oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(0), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(2001), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(3001), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(4001), hdr.GranulePosition)
+
+			_, _, err = oggReader.ParseNextPage()
+			require.Equal(t, io.EOF, err)
+		})
+
+		t.Run("timestamp wrap around", func(t *testing.T) {
+			tr := setupTranscriberForTest(t)
+
+			track := &trackRemoteMock{
+				id: "trackID",
+			}
+
+			pkts := []*rtp.Packet{
+				{
+					Header: rtp.Header{
+						Timestamp: 4294966000,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 4294967000,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 704,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 1704,
+					},
+					Payload: []byte{0x45},
+				},
+				{
+					Header: rtp.Header{
+						Timestamp: 2704,
+					},
+					Payload: []byte{0x45},
+				},
+			}
+
+			var i int
+			track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
+				if i >= len(pkts) {
+					return nil, nil, io.EOF
+				}
+				defer func() { i++ }()
+				return pkts[i], nil, nil
+			}
+
+			sessionID := "sessionID"
+			user := &model.User{Id: "userID", Username: "testuser"}
+
+			dataDir := os.Getenv("DATA_DIR")
+			os.Setenv("DATA_DIR", os.TempDir())
+			defer os.Setenv("DATA_DIR", dataDir)
+
+			tr.liveTracksWg.Add(1)
+			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
+			tr.processLiveTrack(track, sessionID, user)
+			close(tr.trackCtxs)
+			require.Len(t, tr.trackCtxs, 1)
+
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+			defer trackFile.Close()
+			require.NoError(t, err)
+
+			oggReader, _, err := ogg.NewReaderWith(trackFile)
+			require.NoError(t, err)
+
+			// Metadata
+			_, hdr, err := oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(0), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(1), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(1001), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(2001), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(3001), hdr.GranulePosition)
+
+			_, hdr, err = oggReader.ParseNextPage()
+			require.NoError(t, err)
+			require.Equal(t, uint64(4001), hdr.GranulePosition)
+
+			_, _, err = oggReader.ParseNextPage()
+			require.Equal(t, io.EOF, err)
+		})
 	})
 }
