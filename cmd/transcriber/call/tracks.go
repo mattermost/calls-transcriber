@@ -151,10 +151,16 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 			// Check that timestamp hasn't wrapped around. Fairly unlikely but it's
 			// a possibility since the starting timestamp is generated randomly so
 			// it could be close to the end of the uint32 range.
+			// If it hasn't wrapped around then it's an out of order packet which we want
+			// to skip.
 			if hasWrappedAround := math.MaxUint32-prevRTPTimestamp < rtpTSWrapAroundThreshold; !hasWrappedAround {
 				continue
 			}
 
+			// If we detect wraparound we can then go ahead and write the packet
+			// as the increment in timestamp will handled automatically (and
+			// correctly) by the uint conversion that happens in oggWriter.WriteRTP().
+			// Example: uint32(704-4294967000) = 1000
 			slog.Debug("ts wrap around detected", slog.String("trackID", ctx.trackID))
 		}
 
