@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,6 +34,7 @@ const (
 	trackInFrameSize          = trackAudioFrameSizeMs * trackInAudioRate / 1000  // The input frame size in samples
 	trackOutFrameSize         = trackAudioFrameSizeMs * trackOutAudioRate / 1000 // The output frame size in samples
 	audioGapThreshold         = time.Second                                      // The amount of time after which we detect a gap in the audio track.
+	rtpTSWrapAroundThreshold  = trackInAudioRate                                 // The threshold to detect if the RTP timestamp has wrapped around (one second worth of samples).
 
 	dataDir   = "/data"
 	modelsDir = "/models"
@@ -138,6 +140,30 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 			continue
 		}
 
+		// We ignore out of order packets as they would cause synchronization
+		// issues. In the future we may want to reorder them but that requires us to keep
+		// buffers and complicate the whole process.
+		if pkt.Timestamp < prevRTPTimestamp {
+			slog.Debug("out of order packet",
+				slog.Int("diff", int(pkt.Timestamp)-int(prevRTPTimestamp)),
+				slog.String("trackID", ctx.trackID))
+
+			// Check that timestamp hasn't wrapped around. Fairly unlikely but it's
+			// a possibility since the starting timestamp is generated randomly so
+			// it could be close to the end of the uint32 range.
+			// If it hasn't wrapped around then it's an out of order packet which we want
+			// to skip.
+			if hasWrappedAround := math.MaxUint32-prevRTPTimestamp < rtpTSWrapAroundThreshold; !hasWrappedAround {
+				continue
+			}
+
+			// If we detect wraparound we can then go ahead and write the packet
+			// as the increment in timestamp will handled automatically (and
+			// correctly) by the uint conversion that happens in oggWriter.WriteRTP().
+			// Example: uint32(704-4294967000) = 1000
+			slog.Debug("ts wrap around detected", slog.String("trackID", ctx.trackID))
+		}
+
 		var gap uint64
 		if ctx.startTS == 0 {
 			ctx.startTS = time.Since(*t.startTime.Load()).Milliseconds()
@@ -152,6 +178,11 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 			// TODO: check whether it may be easier to rely on sender reports to
 			// potentially achieve more accurate synchronization.
 			rtpGap := time.Duration((pkt.Timestamp-prevRTPTimestamp)/trackInAudioSamplesPerMs) * time.Millisecond
+
+			slog.Debug("receive gap detected",
+				slog.Duration("receiveGap", receiveGap), slog.Duration("rtpGap", rtpGap),
+				slog.Uint64("currTS", uint64(pkt.Timestamp)), slog.Uint64("prevTS", uint64(prevRTPTimestamp)),
+				slog.String("trackID", ctx.trackID))
 
 			if (rtpGap - receiveGap).Abs() > audioGapThreshold {
 				// If the difference between the timestamps reported in RTP packets and
