@@ -75,9 +75,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	})
 	t.client.On(client.RTCTrackEvent, t.handleTrack)
 	t.client.On(client.CloseEvent, func(_ any) error {
-		go func() {
-			t.done(t.handleClose())
-		}()
+		go t.done()
 		return nil
 	})
 
@@ -100,6 +98,20 @@ func (t *Transcriber) Start(ctx context.Context) error {
 				close(startedCh)
 			})
 		}
+		return nil
+	})
+
+	t.client.On(client.WSJobStopEvent, func(ctx any) error {
+		jobID, _ := ctx.(string)
+		if jobID == "" {
+			return fmt.Errorf("unexpected empty jobID")
+		}
+
+		if jobID == t.cfg.TranscriptionID {
+			slog.Info("received job stop event, exiting")
+			go t.done()
+		}
+
 		return nil
 	})
 
@@ -151,9 +163,9 @@ func (t *Transcriber) Err() error {
 	}
 }
 
-func (t *Transcriber) done(err error) {
+func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
-		t.errCh <- err
+		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})
 }
