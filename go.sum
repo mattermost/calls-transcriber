@@ -102,8 +102,8 @@ github.com/mattermost/mattermost-plugin-calls/server/public v0.0.3 h1:KYs2mcdufW
 github.com/mattermost/mattermost-plugin-calls/server/public v0.0.3/go.mod h1:9a5FoYxu9rPCvV4FEo0DkJSqqCZ80FCeB9Y4haBI2FQ=
 github.com/mattermost/mattermost/server/public v0.0.6 h1:FUaJ+P36E3Tt12Umdm8p1h7sZNUeObDk3p3aFTaBkCo=
 github.com/mattermost/mattermost/server/public v0.0.6/go.mod h1:Y7Ht1haGGrsuYzX73HhpSe2VnbGLuZj2/tsQslHd2/M=
-github.com/mattermost/rtcd v0.12.1-0.20231121174414-6a5686281335 h1:PaE1X/fJftk0FgX9YjvToWnSuF4Mr77K5tuU90LRDSc=
-github.com/mattermost/rtcd v0.12.1-0.20231121174414-6a5686281335/go.mod h1:SK7+TEIpUD/rx53RUiy5KotiBzv1h08PujbK87/jw6M=
+github.com/mattermost/rtcd v0.12.1-0.20240105175112-64f91e1de8e0 h1:i3gCGvuCDA/p4hWl87eeXdnXvbanZx2uwyG++99NFKc=
+github.com/mattermost/rtcd v0.12.1-0.20240105175112-64f91e1de8e0/go.mod h1:M2F8N5aipH6Rne8+CYp/QiaFLy6iru3nTt6u/FUxhXs=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/microcosm-cc/bluemonday v1.0.1/go.mod h1:hsXNsILzKxV+sX77C5b8FSuKF00vh2OMYv+xgHpAMF4=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
