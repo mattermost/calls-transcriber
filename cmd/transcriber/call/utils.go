@@ -63,7 +63,20 @@ func getModelsDir() string {
 }
 
 func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err error) {
-	fname, err := t.getFilenameForCall()
+	var fname string
+	for i := 0; i < maxUploadRetryAttempts; i++ {
+		if i > 0 {
+			slog.Error("getFilenameForCall failed",
+				slog.String("err", err.Error()),
+				slog.Duration("reattempt_time", uploadRetryAttemptWaitTime))
+			time.Sleep(uploadRetryAttemptWaitTime)
+		}
+
+		fname, err = t.getFilenameForCall()
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to get filename for call: %w", err)
 	}

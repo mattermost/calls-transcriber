@@ -284,4 +284,66 @@ All right, we should be recording. Welcome everyone, developers meeting for Dece
 		err := tr.publishTranscription(transcribe.Transcription{})
 		require.NoError(t, err)
 	})
+
+	t.Run("should re-attempt in case of failure to get filename", func(t *testing.T) {
+		var failures int
+		middlewares = []middleware{
+			func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Path == "/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/filename" && r.Method == http.MethodGet {
+					if failures == 0 {
+						w.WriteHeader(400)
+						failures++
+					} else {
+						w.WriteHeader(200)
+						fmt.Fprintln(w, `{"filename": "Call_Test"}`)
+					}
+
+					return true
+				}
+
+				return false
+			},
+			func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Path == "/plugins/com.mattermost.calls/bot/uploads" && r.Method == http.MethodPost {
+					var us model.UploadSession
+
+					err := json.NewDecoder(r.Body).Decode(&us)
+					require.NoError(t, err)
+
+					us.Id = "jpanyqdipffrpmxxst3kzdjaah"
+
+					w.WriteHeader(200)
+					err = json.NewEncoder(w).Encode(&us)
+					require.NoError(t, err)
+
+					return true
+				}
+
+				return false
+			},
+			func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Path == "/plugins/com.mattermost.calls/bot/uploads/jpanyqdipffrpmxxst3kzdjaah" && r.Method == http.MethodPost {
+					var fi model.FileInfo
+					w.WriteHeader(200)
+					err = json.NewEncoder(w).Encode(&fi)
+					require.NoError(t, err)
+
+					return true
+				}
+
+				return false
+			},
+			func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Path == "/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/transcriptions" && r.Method == http.MethodPost {
+					w.WriteHeader(200)
+					return true
+				}
+
+				return false
+			},
+		}
+
+		err := tr.publishTranscription(transcribe.Transcription{})
+		require.NoError(t, err)
+	})
 }
