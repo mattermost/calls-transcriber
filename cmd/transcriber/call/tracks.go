@@ -48,6 +48,13 @@ type trackContext struct {
 	user      *model.User
 }
 
+type opusPacket struct {
+	trackContext // TODO: we don't need all this, cut down
+	payload      []byte
+	timestamp    uint32
+	gap          uint64
+}
+
 // handleTrack gets called whenever a new WebRTC track is received (e.g. someone unmuted
 // for the first time). As soon as this happens we start processing the track.
 func (t *Transcriber) handleTrack(ctx any) error {
@@ -115,6 +122,31 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 	}
 	defer oggWriter.Close()
 
+	// Live captioning:
+	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
+	if err != nil {
+		slog.Error("failed to create opus decoder for live captions",
+			slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
+		return
+	}
+	defer func() {
+		if err := opusDec.Destroy(); err != nil {
+			slog.Error("failed to destroy decoder", slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
+		}
+	}()
+
+	pcmBuf := make([]float32, trackOutFrameSize)
+	trackAudioData := make(chan []float32, audio_data_channel_buffer)
+	done := make(chan struct{})
+	defer func() {
+		close(trackAudioData)
+		close(done)
+	}()
+
+	go t.processLiveCaptionsForTrack(ctx, trackAudioData, done)
+
+	// Read track audio:
 	var prevArrivalTime time.Time
 	var prevRTPTimestamp uint32
 	for {
@@ -204,7 +236,22 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 				slog.String("err", err.Error()),
 				slog.String("trackID", ctx.trackID))
 		}
+
+		if len(pkt.Payload) == 0 {
+			continue
+		}
+
+		n, err := opusDec.Decode(pkt.Payload, pcmBuf)
+		if err != nil {
+			slog.Error("failed to decode audio data for live captions",
+				slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
+		}
+
+		// Note: copy so we don't have to worry if the live transcription lags, pauses, or if overloaded and can't process in time
+		trackAudioData <- append([]float32(nil), pcmBuf[:n]...)
 	}
+
 }
 
 // handleClose will kick off post-processing of saved voice tracks.
@@ -213,6 +260,8 @@ func (t *Transcriber) handleClose() error {
 
 	t.liveTracksWg.Wait()
 	close(t.trackCtxs)
+
+	t.captionWg.Wait()
 
 	slog.Debug("live tracks processing done, starting post processing")
 	start := time.Now()
@@ -473,8 +522,9 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
-			ModelFile:  filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
-			NumThreads: t.cfg.NumThreads,
+			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
+			NumThreads:    t.cfg.NumThreads,
+			PrintProgress: true,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

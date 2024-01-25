@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	pluginID          = "com.mattermost.calls"
-	maxTracksContexes = 256
+	pluginID               = "com.mattermost.calls"
+	wsEvPrefix             = "custom_" + pluginID + "_"
+	maxTracksContexes      = 256
+	liveOpusPktChBufferCap = 10
 )
 
 type Transcriber struct {
@@ -31,6 +33,11 @@ type Transcriber struct {
 	liveTracksWg sync.WaitGroup
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
+
+	captionQueue    chan captionPackage
+	captionWg       sync.WaitGroup
+	captionDoneCh   chan struct{}
+	captionDoneOnce sync.Once
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
@@ -52,12 +59,14 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	apiClient.SetToken(cfg.AuthToken)
 
 	return &Transcriber{
-		cfg:       cfg,
-		client:    client,
-		apiClient: apiClient,
-		errCh:     make(chan error, 1),
-		doneCh:    make(chan struct{}),
-		trackCtxs: make(chan trackContext, maxTracksContexes),
+		cfg:           cfg,
+		client:        client,
+		apiClient:     apiClient,
+		errCh:         make(chan error, 1),
+		doneCh:        make(chan struct{}),
+		trackCtxs:     make(chan trackContext, maxTracksContexes),
+		captionQueue:  make(chan captionPackage),
+		captionDoneCh: make(chan struct{}),
 	}, nil
 }
 
@@ -75,6 +84,9 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	})
 	t.client.On(client.RTCTrackEvent, t.handleTrack)
 	t.client.On(client.CloseEvent, func(_ any) error {
+		go t.captionDoneOnce.Do(func() {
+			close(t.captionDoneCh)
+		})
 		go t.done()
 		return nil
 	})
@@ -124,6 +136,8 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+
+	go t.startTranscriberPool()
 
 	select {
 	case <-startedCh:
