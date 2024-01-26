@@ -22,7 +22,7 @@ func (t *Transcriber) postJobStatus(status public.JobStatus) error {
 	defer cancelCtx()
 	resp, err := t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL, payload, "")
 	if err != nil {
-		return fmt.Errorf("request failed%w", err)
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	cancelCtx()
