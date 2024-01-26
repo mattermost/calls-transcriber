@@ -15,20 +15,20 @@ import (
 
 const (
 	// TODO: these need to be in cfg and env var settable, and in proper style.
-	parallel_transcribers_pool = 4
-	threads_per_transcriber    = 1
+	parallelTranscribersPool = 4
+	threadsPerTranscriber    = 1
 
-	chunk_size_in_ms            = 1000
-	max_window_size_in_ms       = 10000
-	audio_data_channel_buffer   = 30 // so we don't block while processing the window's vad
-	remove_window_after_silence = 3 * time.Second
+	chunkSizeInMs            = 1000
+	maxWindowSizeInMs        = 10000
+	audioDataChannelBuffer   = 30 // so we don't block while processing the window's vad
+	removeWindowAfterSilence = 3 * time.Second
 
 	// VAD settings
-	vad_window_size_in_samples  = 512
-	vad_threshold               = 0.5
-	vad_min_silence_duration_ms = 300
-	vad_min_speech_duration_ms  = 200
-	vad_silence_pad_ms          = 32
+	vadWindowSizeInSamples  = 512
+	vadThreshold            = 0.5
+	vadMinSilenceDurationMs = 300
+	vadMinSpeechDurationMs  = 200
+	vadSilencePadMs         = 32
 )
 
 // TODO: belongs in calls-common?
@@ -51,11 +51,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 
 		// set WindowSize to 512 to get as fine-grained detection as possible (for when
 		// the number of samples don't cleanly divide into the WindowSize
-		WindowSize:           vad_window_size_in_samples,
-		Threshold:            vad_threshold,
-		MinSilenceDurationMs: vad_min_silence_duration_ms,
-		MinSpeechDurationMs:  vad_min_speech_duration_ms,
-		SilencePadMs:         vad_silence_pad_ms,
+		WindowSize:           vadWindowSizeInSamples,
+		Threshold:            vadThreshold,
+		MinSilenceDurationMs: vadMinSilenceDurationMs,
+		MinSpeechDurationMs:  vadMinSpeechDurationMs,
+		SilencePadMs:         vadSilencePadMs,
 	})
 	if err != nil {
 		slog.Error("live captions: failed to create speech detector",
@@ -71,11 +71,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 
 	// set capacity to our expected window size (because we gather window + 1 tick
 	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
-	windowCap := (max_window_size_in_ms + 2*chunk_size_in_ms) * trackOutAudioRate / 1000
+	windowCap := (maxWindowSizeInMs + 2*chunkSizeInMs) * trackOutAudioRate / 1000
 	window := make([]float32, 0, windowCap)
 	windowMut := sync.RWMutex{}
-	windowGoalSize := max_window_size_in_ms * trackOutAudioRate / 1000
-	removeWindowSilenceInSamples := remove_window_after_silence.Milliseconds() * trackOutAudioRate / 1000
+	windowGoalSize := maxWindowSizeInMs * trackOutAudioRate / 1000
+	removeWindowSilenceInSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioRate / 1000
 
 	prevWindowLen := 0
 	var prevAudioAt time.Time
@@ -90,7 +90,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 	}
 	go readTrackPCM()
 
-	ticker := time.NewTicker(chunk_size_in_ms * time.Millisecond)
+	ticker := time.NewTicker(chunkSizeInMs * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -108,14 +108,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 				defer windowMut.Unlock()
 
 				// If we don't have enough samples, ignore the window.
-				if len(window) < vad_window_size_in_samples {
+				if len(window) < vadWindowSizeInSamples {
 					return
 				}
 
 				// If there hasn't been any new pcm added, don't re-transcribe.
 				if len(window) == prevWindowLen {
 					// And clear the window if we haven't had new data (window is stale, don't re-transcribe)
-					if time.Since(prevAudioAt) > remove_window_after_silence {
+					if time.Since(prevAudioAt) > removeWindowAfterSilence {
 						window = window[:0]
 					}
 					return
@@ -169,11 +169,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 							cutUpTo = segments[0].Start
 						}
 						if cutUpTo > len(cleaned) {
-							fmt.Sprintf("<><> cutUpTo: %d > len(cleaned) %d", cutUpTo, len(cleaned))
+							fmt.Printf("<><> cutUpTo: %d > len(cleaned) %d", cutUpTo, len(cleaned))
 							cutUpTo = len(cleaned)
 						}
 						if cutUpTo > len(window) {
-							fmt.Sprintf("<><> cutUpTo: %d > len(window) %d", cutUpTo, len(window))
+							fmt.Printf("<><> cutUpTo: %d > len(window) %d", cutUpTo, len(window))
 							cutUpTo = len(window)
 						}
 						cleaned = cleaned[cutUpTo:]
@@ -190,7 +190,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 				// takes > 1 tick to transcribe). That is why we are keeping prevTranscribedPos.
 				// The goals are:
 				// 1. Clear the window if new (untranscribed) data is silence,
-				//    and silence > remove_window_after_silence.
+				//    and silence > removeWindowAfterSilence.
 				// 2. Do not send the window to the transcriber if all new (untranscribed) data is silence.
 
 				prevtranscribedSeg := -1
@@ -261,7 +261,7 @@ func (t *Transcriber) startTranscriberPool() {
 	slog.Debug("live captions: starting transcriber pool")
 
 	// Setup the transcribers
-	for i := 0; i < parallel_transcribers_pool; i++ {
+	for i := 0; i < parallelTranscribersPool; i++ {
 		go t.handleTranscriptionRequests(i)
 	}
 }
@@ -312,7 +312,7 @@ func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, erro
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
 			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
-			NumThreads:    threads_per_transcriber,
+			NumThreads:    threadsPerTranscriber,
 			NoContext:     true, // do not use previous translations as context for next translation: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321225563
 			AudioContext:  512,  // a bit more than 10seconds: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321230379
 			PrintProgress: false,

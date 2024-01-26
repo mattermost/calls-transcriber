@@ -48,13 +48,6 @@ type trackContext struct {
 	user      *model.User
 }
 
-type opusPacket struct {
-	trackContext // TODO: we don't need all this, cut down
-	payload      []byte
-	timestamp    uint32
-	gap          uint64
-}
-
 // handleTrack gets called whenever a new WebRTC track is received (e.g. someone unmuted
 // for the first time). As soon as this happens we start processing the track.
 func (t *Transcriber) handleTrack(ctx any) error {
@@ -137,7 +130,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 	}()
 
 	pcmBuf := make([]float32, trackOutFrameSize)
-	trackAudioData := make(chan []float32, audio_data_channel_buffer)
+	trackAudioData := make(chan []float32, audioDataChannelBuffer)
 	done := make(chan struct{})
 	defer func() {
 		close(trackAudioData)
