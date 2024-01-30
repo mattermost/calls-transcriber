@@ -239,7 +239,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 						slog.Debug("live captions: dropped a tick waiting for the transcriber",
 							slog.String("trackID", ctx.trackID))
 					case text := <-transcribed:
-						if err := t.client.Send(wsEvPrefix+"caption", CaptionMsg{
+						if err := t.client.SendWs(wsEvPrefix+"caption", CaptionMsg{
 							SessionID: ctx.sessionID,
 							UserID:    ctx.user.Id,
 							Text:      text,
