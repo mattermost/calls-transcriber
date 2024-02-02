@@ -116,28 +116,18 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 	defer oggWriter.Close()
 
 	// Live captioning:
-	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
-	if err != nil {
-		slog.Error("failed to create opus decoder for live captions",
-			slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
-		return
+	// pktPayloadChan is used to send the rtp audio data to the processLiveCaptionsForTrack goroutine
+	var pktPayloadChan chan []byte
+	if t.cfg.LiveCaptionsOn {
+		pktPayloadChan = make(chan []byte, audioDataChannelBuffer)
+		doneChan := make(chan struct{})
+		defer func() {
+			close(pktPayloadChan)
+			close(doneChan)
+		}()
+
+		go t.processLiveCaptionsForTrack(ctx, pktPayloadChan, doneChan)
 	}
-	defer func() {
-		if err := opusDec.Destroy(); err != nil {
-			slog.Error("failed to destroy decoder", slog.String("err", err.Error()),
-				slog.String("trackID", ctx.trackID))
-		}
-	}()
-
-	pcmBuf := make([]float32, trackOutFrameSize)
-	trackAudioData := make(chan []float32, audioDataChannelBuffer)
-	done := make(chan struct{})
-	defer func() {
-		close(trackAudioData)
-		close(done)
-	}()
-
-	go t.processLiveCaptionsForTrack(ctx, trackAudioData, done)
 
 	// Read track audio:
 	var prevArrivalTime time.Time
@@ -230,19 +220,9 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 				slog.String("trackID", ctx.trackID))
 		}
 
-		if len(pkt.Payload) == 0 {
-			continue
+		if t.cfg.LiveCaptionsOn {
+			pktPayloadChan <- pkt.Payload
 		}
-
-		n, err := opusDec.Decode(pkt.Payload, pcmBuf)
-		if err != nil {
-			slog.Error("failed to decode audio data for live captions",
-				slog.String("err", err.Error()),
-				slog.String("trackID", ctx.trackID))
-		}
-
-		// Note: copy so we don't have to worry if the live transcription lags, pauses, or if overloaded and can't process in time
-		trackAudioData <- append([]float32(nil), pcmBuf[:n]...)
 	}
 
 }

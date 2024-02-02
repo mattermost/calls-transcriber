@@ -15,10 +15,9 @@ import (
 )
 
 const (
-	pluginID               = "com.mattermost.calls"
-	wsEvPrefix             = "custom_" + pluginID + "_"
-	maxTracksContexes      = 256
-	liveOpusPktChBufferCap = 10
+	pluginID          = "com.mattermost.calls"
+	wsEvPrefix        = "custom_" + pluginID + "_"
+	maxTracksContexes = 256
 )
 
 type Transcriber struct {
@@ -137,7 +136,11 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		return ctx.Err()
 	}
 
-	go t.startTranscriberPool()
+	if t.cfg.LiveCaptionsOn {
+		go t.startTranscriberPool()
+	} else {
+		slog.Info("LiveCaptionsOn is false; not starting the transcriber pool")
+	}
 
 	select {
 	case <-startedCh:

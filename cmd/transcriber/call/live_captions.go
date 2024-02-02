@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/whisper.cpp"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/opus"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
@@ -14,10 +15,6 @@ import (
 )
 
 const (
-	// TODO: these need to be in cfg and env var settable, and in proper style.
-	parallelTranscribersPool = 4
-	threadsPerTranscriber    = 1
-
 	chunkSizeInMs            = 1000
 	maxWindowSizeInMs        = 10000
 	audioDataChannelBuffer   = 30 // so we don't block while processing the window's vad
@@ -43,7 +40,20 @@ type captionPackage struct {
 	ret chan string
 }
 
-func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudio <-chan []float32, done <-chan struct{}) {
+func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads <-chan []byte, doneChan <-chan struct{}) {
+	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
+	if err != nil {
+		slog.Error("processLiveCaptionsForTrack: failed to create opus decoder for live captions",
+			slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
+		return
+	}
+	defer func() {
+		if err := opusDec.Destroy(); err != nil {
+			slog.Error("processLiveCaptionsForTrack: failed to destroy decoder", slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
+		}
+	}()
+
 	// Setup the VAD
 	sd, err := speech.NewDetector(speech.DetectorConfig{
 		ModelPath:  filepath.Join(getModelsDir(), "silero_vad.onnx"),
@@ -58,14 +68,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 		SilencePadMs:         vadSilencePadMs,
 	})
 	if err != nil {
-		slog.Error("live captions: failed to create speech detector",
+		slog.Error("processLiveCaptionsForTrack: failed to create speech detector",
 			slog.String("err", err.Error()))
 	}
 	defer func() {
 		if err := sd.Destroy(); err != nil {
-			slog.Error("live captions: failed to destroy speech detector", slog.String("err", err.Error()))
+			slog.Error("processLiveCaptionsForTrack: failed to destroy speech detector", slog.String("err", err.Error()))
 		}
-		slog.Debug("live captions: finished processing live captions",
+		slog.Debug("processLiveCaptionsForTrack: finished processing live captions",
 			slog.String("trackID", ctx.trackID))
 	}()
 
@@ -81,10 +91,18 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 	var prevAudioAt time.Time
 	prevTranscribedPos := 0
 
+	pcmBuf := make([]float32, trackOutFrameSize)
 	readTrackPCM := func() {
-		for pcm := range incomingAudio {
+		for payload := range pktPayloads {
+			n, err := opusDec.Decode(payload, pcmBuf)
+			if err != nil {
+				slog.Error("failed to decode audio data for live captions",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+
 			windowMut.Lock()
-			window = append(window, pcm...)
+			window = append(window, pcmBuf[:n]...)
 			windowMut.Unlock()
 		}
 	}
@@ -95,7 +113,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 
 	for {
 		select {
-		case <-done:
+		case <-doneChan:
 			return
 		case <-ticker.C:
 			func() {
@@ -260,8 +278,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, incomingAudi
 func (t *Transcriber) startTranscriberPool() {
 	slog.Debug("live captions: starting transcriber pool")
 
-	// Setup the transcribers
-	for i := 0; i < parallelTranscribersPool; i++ {
+	for i := 0; i < t.cfg.LiveCaptionsNumTranscribers; i++ {
 		go t.handleTranscriptionRequests(i)
 	}
 }
@@ -311,8 +328,8 @@ func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, erro
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
-			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
-			NumThreads:    threadsPerTranscriber,
+			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.LiveCaptionsModelSize))),
+			NumThreads:    t.cfg.LiveCaptionsNumThreadsPerTranscriber,
 			NoContext:     true, // do not use previous translations as context for next translation: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321225563
 			AudioContext:  512,  // a bit more than 10seconds: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321230379
 			PrintProgress: false,
