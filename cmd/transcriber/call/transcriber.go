@@ -82,10 +82,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		return nil
 	})
 	t.client.On(client.RTCTrackEvent, t.handleTrack)
-	t.client.On(client.CloseEvent, func(_ any) error {
-		go t.captionDoneOnce.Do(func() {
-			close(t.captionDoneCh)
-		})
+	t.client.On(client.CloseEvent, func(msg any) error {
 		go t.done()
 		return nil
 	})
@@ -182,6 +179,7 @@ func (t *Transcriber) Err() error {
 
 func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
+		close(t.captionDoneCh)
 		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})
