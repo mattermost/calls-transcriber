@@ -33,10 +33,9 @@ type Transcriber struct {
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
 
-	captionQueue    chan captionPackage
-	captionWg       sync.WaitGroup
-	captionDoneCh   chan struct{}
-	captionDoneOnce sync.Once
+	captionQueue  chan captionPackage
+	captionWg     sync.WaitGroup
+	captionDoneCh chan struct{}
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
