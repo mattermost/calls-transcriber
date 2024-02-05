@@ -116,17 +116,17 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 	defer oggWriter.Close()
 
 	// Live captioning:
-	// pktPayloadChan is used to send the rtp audio data to the processLiveCaptionsForTrack goroutine
-	var pktPayloadChan chan []byte
+	// pktPayloadCh is used to send the rtp audio data to the processLiveCaptionsForTrack goroutine
+	var pktPayloadCh chan []byte
 	if t.cfg.LiveCaptionsOn {
-		pktPayloadChan = make(chan []byte, audioDataChannelBuffer)
+		pktPayloadCh = make(chan []byte, pktPayloadChBuffer)
 		doneChan := make(chan struct{})
 		defer func() {
-			close(pktPayloadChan)
+			close(pktPayloadCh)
 			close(doneChan)
 		}()
 
-		go t.processLiveCaptionsForTrack(ctx, pktPayloadChan, doneChan)
+		go t.processLiveCaptionsForTrack(ctx, pktPayloadCh, doneChan)
 	}
 
 	// Read track audio:
@@ -221,7 +221,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 		}
 
 		if t.cfg.LiveCaptionsOn {
-			pktPayloadChan <- pkt.Payload
+			pktPayloadCh <- pkt.Payload
 		}
 	}
 
