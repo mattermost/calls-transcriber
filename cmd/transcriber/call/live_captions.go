@@ -29,10 +29,10 @@ const (
 )
 
 type CaptionMsg struct {
-	SessionID     string `json:"session_id"`
-	UserID        string `json:"user_id"`
-	Text          string `json:"text"`
-	NewAudioLenMs int    `json:"new_audio_len_ms"`
+	SessionID     string  `json:"session_id"`
+	UserID        string  `json:"user_id"`
+	Text          string  `json:"text"`
+	NewAudioLenMs float64 `json:"new_audio_len_ms"`
 }
 
 type captionPackage struct {
@@ -268,7 +268,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						SessionID:     ctx.sessionID,
 						UserID:        ctx.user.Id,
 						Text:          text,
-						NewAudioLenMs: newAudioLenMs,
+						NewAudioLenMs: float64(newAudioLenMs),
 					}, false); err != nil {
 						slog.Error("live captions, processLiveCaptionsForTrack: error sending ws captions",
 							slog.String("err", err.Error()),
