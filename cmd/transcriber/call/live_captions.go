@@ -29,9 +29,10 @@ const (
 )
 
 type CaptionMsg struct {
-	SessionID string `json:"session_id"`
-	UserID    string `json:"user_id"`
-	Text      string `json:"text"`
+	SessionID     string `json:"session_id"`
+	UserID        string `json:"user_id"`
+	Text          string `json:"text"`
+	NewAudioLenMs int    `json:"new_audio_len_ms"`
 }
 
 type captionPackage struct {
@@ -79,11 +80,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	}()
 
 	// readTrackPktPayloads reads incoming pktPayload data from the track and converts it to PCM.
-	// toBeTranslated stores pcm data until it can be added to the window. The capacity is just an
+	// toBeTranscribed stores pcm data until it can be added to the window. The capacity is just an
 	// guess of the outside amount of time we may be waiting between calls to the transcribing pool.
 	// If it's not big enough, we may get a small hiccup while it resizes, but no big deal: it will only
 	// affect the readTrackPktPayloads goroutine, and the channel it's reading from has a healthy buffer.
-	toBeTranslated := make([]float32, 0, 3*chunkSizeInMs*trackOutAudioRate/1000)
+	toBeTranscribed := make([]float32, 0, 3*chunkSizeInMs*trackOutAudioSamplesPerMs)
 	toBeTranslatedMut := sync.RWMutex{}
 	pcmBuf := make([]float32, trackOutFrameSize)
 	readTrackPktPayloads := func() {
@@ -96,7 +97,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			}
 
 			toBeTranslatedMut.Lock()
-			toBeTranslated = append(toBeTranslated, pcmBuf[:n]...)
+			toBeTranscribed = append(toBeTranscribed, pcmBuf[:n]...)
 			toBeTranslatedMut.Unlock()
 		}
 	}
@@ -104,10 +105,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 	// set capacity to our expected window size (+2 chunks, because we gather window + 1 tick
 	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
-	windowCap := (maxWindowSizeInMs + 2*chunkSizeInMs) * trackOutAudioRate / 1000
+	windowCap := (maxWindowSizeInMs + 2*chunkSizeInMs) * trackOutAudioSamplesPerMs
 	window := make([]float32, 0, windowCap)
-	windowGoalSize := maxWindowSizeInMs * trackOutAudioRate / 1000
-	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioRate / 1000
+	windowGoalSize := maxWindowSizeInMs * trackOutAudioSamplesPerMs
+	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
 
 	prevWindowLen := 0
 	var prevAudioAt time.Time
@@ -134,8 +135,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			return
 		case <-ticker.C:
 			toBeTranslatedMut.Lock()
-			window = append(window, toBeTranslated...)
-			toBeTranslated = toBeTranslated[:0]
+			window = append(window, toBeTranscribed...)
+			// track how long we were waiting until consuming the next batch of audio data, as a measure
+			// of the pressure on the transcription process
+			newAudioLenMs := len(toBeTranscribed) / trackOutAudioSamplesPerMs
+			toBeTranscribed = toBeTranscribed[:0]
 			toBeTranslatedMut.Unlock()
 
 			// If we don't have enough samples, ignore the window.
@@ -257,14 +261,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			for {
 				select {
 				case <-ticker.C:
-					// TODO: add metrics for this.
 					slog.Debug("live captions, processLiveCaptionsForTrack: dropped a tick waiting for the transcriber",
 						slog.String("trackID", ctx.trackID))
 				case text := <-transcribedCh:
 					if err := t.client.SendWs(wsEvPrefix+"caption", CaptionMsg{
-						SessionID: ctx.sessionID,
-						UserID:    ctx.user.Id,
-						Text:      text,
+						SessionID:     ctx.sessionID,
+						UserID:        ctx.user.Id,
+						Text:          text,
+						NewAudioLenMs: newAudioLenMs,
 					}, false); err != nil {
 						slog.Error("live captions, processLiveCaptionsForTrack: error sending ws captions",
 							slog.String("err", err.Error()),
