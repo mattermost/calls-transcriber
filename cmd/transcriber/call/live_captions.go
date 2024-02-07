@@ -15,15 +15,15 @@ import (
 )
 
 const (
-	chunkSizeInMs            = 1000
-	maxWindowSizeInMs        = 10000
+	chunkSizeInMs            = 2000
+	maxWindowSizeInMs        = 8000
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
 
 	// VAD settings
 	vadWindowSizeInSamples  = 512
 	vadThreshold            = 0.5
-	vadMinSilenceDurationMs = 300
+	vadMinSilenceDurationMs = 150
 	vadMinSpeechDurationMs  = 200
 	vadSilencePadMs         = 32
 )
@@ -153,6 +153,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				if time.Since(prevAudioAt) > removeWindowAfterSilence {
 					window = window[:0]
 					prevWindowLen = 0
+					prevTranscribedPos = 0
 				}
 				continue
 			}
@@ -161,14 +162,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 			cleaned, segments, err := sd.DetectRealtime(window)
 			if err != nil {
-				slog.Error("live captions, processLiveCaptionsForTrack: vad failed", slog.String("err", err.Error()))
+				slog.Error("processLiveCaptionsForTrack: vad failed", slog.String("err", err.Error()))
 				continue
 			}
 
-			fmt.Printf("<><> cleaned len: %d, window lent: %d, num segments: %d, prevTranscribedPos: %d\n", len(cleaned), len(window), len(segments), prevTranscribedPos)
-			// More detailed debugging:
+			//fmt.Printf("<><> cleaned len: %d, window len: %d, num segments: %d, prevTranscribedPos: %d\n", len(cleaned), len(window), len(segments), prevTranscribedPos)
+			// Even more detailed debugging:
 			//for i, s := range segments {
-			//	fmt.Printf("\n%d: Start: \t%d,\tEnd: %d,\tSilent?: \t%v", i, s.Start, s.End, s.Silence)
+			//	fmt.Printf("%d: Start: \t%d,\tEnd: %d,\tSilent?: \t%v\n", i, s.Start, s.End, s.Silence)
 			//}
 
 			// Before sending off data to be transcribed, check if new data is silence.
@@ -208,14 +209,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						continue
 					}
 					// 2. all new (untranscribed) data is silence, so don't send to the transcriber.
-					fmt.Printf("<><> all untranscribed data is silence ** not sending to transcriber\n")
+					fmt.Printf("<><> all untranscribed data is silence; not sending to transcriber\n")
 					continue
 				}
 			}
 
-			// Track our new position and send off data for transcription
-			// Note: if we were delayed (by a slow transcriber), this may cause us to translate a
-			// longer-than expected block of voice. If we see this happening due to slowness,
+			// Track our new position and send off data for transcription.
+			// Note: if we were delayed (by a slow transcriber), this may cause us to translate a longer-than
+			// expected (much > than windowGoalSize) block of voice. If we see this happening due to slowness,
 			// adjust the windowGoalSize lower.
 			prevTranscribedPos = len(cleaned)
 			transcribedCh := make(chan string)
@@ -234,7 +235,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			for len(cleaned) > windowGoalSize {
 				if len(segments) == 0 {
 					// Should not be possible, but instead of panic-ing, log an error.
-					slog.Error("live captions, processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
+					slog.Error("processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
 						slog.String("trackID", ctx.trackID))
 				} else {
 					var oldestSegment speech.RealtimeSegment
@@ -274,13 +275,19 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 					slog.Debug("live captions, processLiveCaptionsForTrack: dropped a tick waiting for the transcriber",
 						slog.String("trackID", ctx.trackID))
 				case text := <-transcribedCh:
+					if len(text) == 0 {
+						// Note: this appears to happen when the transcriber fails to decode a block of audio.
+						// Usually the probability returned for the language is very low as well, which makes sense.
+						slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
+						break waitForTranscription
+					}
 					if err := t.client.SendWs(wsEvPrefix+"caption", CaptionMsg{
 						SessionID:     ctx.sessionID,
 						UserID:        ctx.user.Id,
 						Text:          text,
 						NewAudioLenMs: float64(newAudioLenMs),
 					}, false); err != nil {
-						slog.Error("live captions, processLiveCaptionsForTrack: error sending ws captions",
+						slog.Error("processLiveCaptionsForTrack: error sending ws captions",
 							slog.String("err", err.Error()),
 							slog.String("trackID", ctx.trackID))
 					}

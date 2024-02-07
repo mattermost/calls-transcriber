@@ -16,11 +16,12 @@ var idRE = regexp.MustCompile(`^[a-z0-9]{26}$`)
 
 const (
 	// defaults
-	ModelSizeDefault                   = ModelSizeBase
-	TranscribeAPIDefault               = TranscribeAPIWhisperCPP
-	OutputFormatDefault                = OutputFormatVTT
-	LiveCaptionsModelSizeDefault       = ModelSizeBase
-	LiveCaptionsNumTranscribersDefault = 4
+	ModelSizeDefault                            = ModelSizeBase
+	TranscribeAPIDefault                        = TranscribeAPIWhisperCPP
+	OutputFormatDefault                         = OutputFormatVTT
+	LiveCaptionsModelSizeDefault                = ModelSizeTiny
+	LiveCaptionsNumTranscribersDefault          = 2
+	LiveCaptionsNumThreadsPerTranscriberDefault = 2
 )
 
 type OutputFormat string
@@ -196,7 +197,7 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 		cfg.LiveCaptionsNumTranscribers = min(LiveCaptionsNumTranscribersDefault, runtime.NumCPU()/2)
 	}
 	if cfg.LiveCaptionsNumThreadsPerTranscriber == 0 {
-		cfg.LiveCaptionsNumThreadsPerTranscriber = 1
+		cfg.LiveCaptionsNumThreadsPerTranscriber = LiveCaptionsNumThreadsPerTranscriberDefault
 	}
 }
 
