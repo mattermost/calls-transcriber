@@ -236,8 +236,8 @@ func TestConfigSetDefaults(t *testing.T) {
 			OutputFormat:                         OutputFormatDefault,
 			NumThreads:                           max(1, runtime.NumCPU()/2),
 			LiveCaptionsNumTranscribers:          min(LiveCaptionsNumTranscribersDefault, runtime.NumCPU()/2),
-			LiveCaptionsNumThreadsPerTranscriber: 1,
-			LiveCaptionsModelSize:                ModelSizeDefault,
+			LiveCaptionsNumThreadsPerTranscriber: 2,
+			LiveCaptionsModelSize:                LiveCaptionsModelSizeDefault,
 			OutputOptions: OutputOptions{
 				WebVTT: transcribe.WebVTTOptions{
 					OmitSpeaker: false,
@@ -263,7 +263,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			OutputFormat:                         OutputFormatDefault,
 			NumThreads:                           max(1, runtime.NumCPU()/2),
 			LiveCaptionsNumTranscribers:          min(LiveCaptionsNumTranscribersDefault, runtime.NumCPU()/2),
-			LiveCaptionsNumThreadsPerTranscriber: 1,
+			LiveCaptionsNumThreadsPerTranscriber: 2,
 			LiveCaptionsModelSize:                LiveCaptionsModelSizeDefault,
 			OutputOptions: OutputOptions{
 				WebVTT: transcribe.WebVTTOptions{
@@ -361,7 +361,7 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 		"OUTPUT_FORMAT=vtt",
 		"NUM_THREADS=1",
 		"LIVE_CAPTIONS_ON=true",
-		"LIVE_CAPTIONS_MODEL_SIZE=base",
+		"LIVE_CAPTIONS_MODEL_SIZE=tiny",
 		"LIVE_CAPTIONS_NUM_TRANSCRIBERS=1",
 		"LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER=1",
 		"WEBVTT_OMIT_SPEAKER=false",
