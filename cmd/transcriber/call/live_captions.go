@@ -334,6 +334,8 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 			if err != nil {
 				slog.Error("live captions, handleTranscriptionRequests: failed to transcribe audio samples",
 					slog.String("err", err.Error()))
+				packet.retCh <- ""
+				return
 			}
 
 			var text []string
