@@ -272,7 +272,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			for {
 				select {
 				case <-ticker.C:
-					slog.Debug("live captions, processLiveCaptionsForTrack: dropped a tick waiting for the transcriber",
+					slog.Debug("processLiveCaptionsForTrack: dropped a tick waiting for the transcriber",
 						slog.String("trackID", ctx.trackID))
 				case text := <-transcribedCh:
 					if len(text) == 0 {
