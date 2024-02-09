@@ -6,6 +6,7 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/opus"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
+	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
 	"path/filepath"
@@ -15,11 +16,11 @@ import (
 )
 
 const (
-	chunkSizeInMs            = 2000
-	maxWindowSizeInMs        = 8000
+	chunkSize                = 2 * time.Second
+	maxWindowSize            = 8 * time.Second
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
-	windowPressureLimit      = 16 * time.Second // at this point cut the audio down to prevent a death spiral
+	windowPressureLimit      = 12 * time.Second // at this point cut the audio down to prevent a death spiral
 
 	// VAD settings
 	vadWindowSizeInSamples  = 512
@@ -28,13 +29,6 @@ const (
 	vadMinSpeechDurationMs  = 200
 	vadSilencePadMs         = 32
 )
-
-type CaptionMsg struct {
-	SessionID     string  `json:"session_id"`
-	UserID        string  `json:"user_id"`
-	Text          string  `json:"text"`
-	NewAudioLenMs float64 `json:"new_audio_len_ms"`
-}
 
 type captionPackage struct {
 	pcm   []float32
@@ -85,7 +79,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	// guess of the outside amount of time we may be waiting between calls to the transcribing pool.
 	// If it's not big enough, we may get a small hiccup while it resizes, but no big deal: it will only
 	// affect the readTrackPktPayloads goroutine, and the channel it's reading from has a healthy buffer.
-	toBeTranscribed := make([]float32, 0, 3*chunkSizeInMs*trackOutAudioSamplesPerMs)
+	toBeTranscribed := make([]float32, 0, 3*chunkSize.Milliseconds()*trackOutAudioSamplesPerMs)
 	toBeTranslatedMut := sync.RWMutex{}
 	pcmBuf := make([]float32, trackOutFrameSize)
 	readTrackPktPayloads := func() {
@@ -106,9 +100,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 	// set capacity to our expected window size (+2 chunks, because we gather window + 1 tick
 	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
-	windowCap := (maxWindowSizeInMs + 2*chunkSizeInMs) * trackOutAudioSamplesPerMs
+	windowCap := (maxWindowSize.Milliseconds() + 2*chunkSize.Milliseconds()) * trackOutAudioSamplesPerMs
 	window := make([]float32, 0, windowCap)
-	windowGoalSize := maxWindowSizeInMs * trackOutAudioSamplesPerMs
+	windowGoalSize := maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs
 	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
 	windowPressureLimitSamples := windowPressureLimit.Milliseconds() * trackOutAudioSamplesPerMs
 
@@ -116,7 +110,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	var prevAudioAt time.Time
 	prevTranscribedPos := 0
 
-	ticker := time.NewTicker(chunkSizeInMs * time.Millisecond)
+	ticker := time.NewTicker(chunkSize)
 	defer ticker.Stop()
 
 	// Algorithm summary:
@@ -169,6 +163,15 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				window = window[:0]
 				prevWindowLen = 0
 				prevTranscribedPos = 0
+				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+					SessionID:  ctx.sessionID,
+					MetricName: public.MetricPressureReleased,
+				}, false); err != nil {
+					slog.Error("processLiveCaptionsForTrack: error sending ws captions",
+						slog.String("err", err.Error()),
+						slog.String("trackID", ctx.trackID))
+				}
+
 				continue
 			}
 
@@ -247,7 +250,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			// if the speaker doesn't take breaths between words...
 			// So consider guarding against that. Maybe fallback to cutting in the middle,
 			// to prevent starting the next part of a run-on sentence from zero.
-			for len(cleaned) > windowGoalSize {
+			for int64(len(cleaned)) > windowGoalSize {
 				if len(segments) == 0 {
 					// Should not be possible, but instead of panic-ing, log an error.
 					slog.Error("processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
@@ -296,7 +299,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 						break waitForTranscription
 					}
-					if err := t.client.SendWs(wsEvPrefix+"caption", CaptionMsg{
+					if err := t.client.SendWs(wsEvCaption, public.CaptionMsg{
 						SessionID:     ctx.sessionID,
 						UserID:        ctx.user.Id,
 						Text:          text,

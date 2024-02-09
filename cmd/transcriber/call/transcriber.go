@@ -17,6 +17,8 @@ import (
 const (
 	pluginID          = "com.mattermost.calls"
 	wsEvPrefix        = "custom_" + pluginID + "_"
+	wsEvCaption       = "custom_" + pluginID + "_caption"
+	wsEvMetric        = "custom_" + pluginID + "_metric"
 	maxTracksContexes = 256
 )
 
