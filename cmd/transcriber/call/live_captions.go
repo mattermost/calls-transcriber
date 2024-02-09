@@ -82,7 +82,8 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	// guess of the outside amount of time we may be waiting between calls to the transcribing pool.
 	// If it's not big enough, we may get a small hiccup while it resizes, but no big deal: it will only
 	// affect the readTrackPktPayloads goroutine, and the channel it's reading from has a healthy buffer.
-	toBeTranscribed := make([]float32, 0, 3*t.transcriberTickRateNs.Load()*trackOutAudioSamplesPerMs)
+	tickRate := time.Duration(t.transcriberTickRateNs.Load())
+	toBeTranscribed := make([]float32, 0, 3*tickRate.Milliseconds()*trackOutAudioSamplesPerMs)
 	toBeTranslatedMut := sync.RWMutex{}
 	pcmBuf := make([]float32, trackOutFrameSize)
 	readTrackPktPayloads := func() {
@@ -103,7 +104,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 	// set capacity to our windowPressureLimit (+2 chunks, because we gather window + 1 tick
 	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
-	windowCap := (windowPressureLimit.Milliseconds() + 2*t.transcriberTickRateNs.Load()) * trackOutAudioSamplesPerMs
+	windowCap := (windowPressureLimit.Milliseconds() + 2*tickRate.Milliseconds()) * trackOutAudioSamplesPerMs
 	window := make([]float32, 0, windowCap)
 	windowGoalSize := maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs
 	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
