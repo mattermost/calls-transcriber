@@ -35,9 +35,10 @@ type Transcriber struct {
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
 
-	transcriberQueueCh chan captionPackage
-	transcriberWg      sync.WaitGroup
-	transcriberDoneCh  chan struct{}
+	transcriberQueueCh    chan captionPackage
+	transcriberWg         sync.WaitGroup
+	transcriberDoneCh     chan struct{}
+	transcriberTickRateNs atomic.Int64
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
@@ -58,16 +59,18 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	apiClient := model.NewAPIv4Client(cfg.SiteURL)
 	apiClient.SetToken(cfg.AuthToken)
 
-	return &Transcriber{
+	t := &Transcriber{
 		cfg:                cfg,
 		client:             client,
 		apiClient:          apiClient,
 		errCh:              make(chan error, 1),
 		doneCh:             make(chan struct{}),
 		trackCtxs:          make(chan trackContext, maxTracksContexes),
-		transcriberQueueCh: make(chan captionPackage, captionQueueBuffer),
+		transcriberQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
 		transcriberDoneCh:  make(chan struct{}),
-	}, nil
+	}
+	t.transcriberTickRateNs.Store(initialChunkSize.Nanoseconds())
+	return t, nil
 }
 
 func (t *Transcriber) Start(ctx context.Context) error {

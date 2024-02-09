@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	captionQueueBuffer       = 1
-	chunkSize                = 2 * time.Second
+	transcriberQueueChBuffer = 1
+	initialChunkSize         = 2 * time.Second
+	chunkBackoffStep         = 1 * time.Second
+	maxChunkSize             = 4 * time.Second // we will back off to this chunk size when overloaded
 	maxWindowSize            = 8 * time.Second
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
@@ -80,7 +82,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	// guess of the outside amount of time we may be waiting between calls to the transcribing pool.
 	// If it's not big enough, we may get a small hiccup while it resizes, but no big deal: it will only
 	// affect the readTrackPktPayloads goroutine, and the channel it's reading from has a healthy buffer.
-	toBeTranscribed := make([]float32, 0, 3*chunkSize.Milliseconds()*trackOutAudioSamplesPerMs)
+	toBeTranscribed := make([]float32, 0, 3*t.transcriberTickRateNs.Load()*trackOutAudioSamplesPerMs)
 	toBeTranslatedMut := sync.RWMutex{}
 	pcmBuf := make([]float32, trackOutFrameSize)
 	readTrackPktPayloads := func() {
@@ -99,9 +101,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	}
 	go readTrackPktPayloads()
 
-	// set capacity to our expected window size (+2 chunks, because we gather window + 1 tick
+	// set capacity to our windowPressureLimit (+2 chunks, because we gather window + 1 tick
 	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
-	windowCap := (maxWindowSize.Milliseconds() + 2*chunkSize.Milliseconds()) * trackOutAudioSamplesPerMs
+	windowCap := (windowPressureLimit.Milliseconds() + 2*t.transcriberTickRateNs.Load()) * trackOutAudioSamplesPerMs
 	window := make([]float32, 0, windowCap)
 	windowGoalSize := maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs
 	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
@@ -111,7 +113,8 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	var prevAudioAt time.Time
 	prevTranscribedPos := 0
 
-	ticker := time.NewTicker(chunkSize)
+	myTickRateNs := t.transcriberTickRateNs.Load()
+	ticker := time.NewTicker(time.Duration(myTickRateNs))
 	defer ticker.Stop()
 
 	// Algorithm summary:
@@ -173,7 +176,23 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						slog.String("trackID", ctx.trackID))
 				}
 
+				// Backoff on the chunk ticker to reduce the pressure.
+				curTickRateNs := t.transcriberTickRateNs.Load()
+				if curTickRateNs < int64(maxChunkSize) {
+					newTickRateNs := curTickRateNs + int64(chunkBackoffStep)
+					t.transcriberTickRateNs.CompareAndSwap(curTickRateNs, newTickRateNs)
+					// if swap didn't work, another routine must have increased it. Regardless, use newTickRateNs.
+					myTickRateNs = newTickRateNs
+					ticker.Reset(time.Duration(newTickRateNs))
+				}
 				continue
+			} else {
+				// We're ok for pressure, but adjust in case another routine changed the tickRate.
+				curTickRateNs := t.transcriberTickRateNs.Load()
+				if curTickRateNs != myTickRateNs {
+					ticker.Reset(time.Duration(curTickRateNs))
+					myTickRateNs = curTickRateNs
+				}
 			}
 
 			prevAudioAt = time.Now()
