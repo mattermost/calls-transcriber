@@ -186,13 +186,13 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 					ticker.Reset(time.Duration(newTickRateNs))
 				}
 				continue
-			} else {
-				// We're ok for pressure, but adjust in case another routine changed the tickRate.
-				curTickRateNs := t.transcriberTickRateNs.Load()
-				if curTickRateNs != myTickRateNs {
-					ticker.Reset(time.Duration(curTickRateNs))
-					myTickRateNs = curTickRateNs
-				}
+			}
+
+			// We're ok for pressure, but adjust in case another routine changed the tickRate.
+			curTickRateNs := t.transcriberTickRateNs.Load()
+			if curTickRateNs != myTickRateNs {
+				ticker.Reset(time.Duration(curTickRateNs))
+				myTickRateNs = curTickRateNs
 			}
 
 			prevAudioAt = time.Now()
