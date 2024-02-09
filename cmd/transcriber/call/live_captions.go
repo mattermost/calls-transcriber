@@ -161,13 +161,15 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			}
 
 			// Pressure valve:
-			// If the transcriber machine is briefly overloaded, you can get into a kind of death spiral
+			// If the transcriber machine is (even briefly) overloaded, you can get into a kind of death spiral
 			// where too much audio has been buffered in toBeTranscribed, and there's no way the transcriber
 			// can finish it all in time, and it will never be able to recover. This happens especially when
 			// number of calls * threads per call > numCPUs. We need to be able to relieve the pressure.
 			if int64(len(window)) > windowPressureLimitSamples {
-				window = window[:windowGoalSize]
+				window = window[:0]
+				prevWindowLen = 0
 				prevTranscribedPos = 0
+				continue
 			}
 
 			prevAudioAt = time.Now()
