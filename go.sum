@@ -95,6 +95,8 @@ github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-2024020902490
 github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209024906-5e803306ee88/go.mod h1:9a5FoYxu9rPCvV4FEo0DkJSqqCZ80FCeB9Y4haBI2FQ=
 github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209210828-a1098646e40f h1:diKuqYgO5UFRV7EhVP9Q6x67BQAfOQnvbk1Zlsd1kVg=
 github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209210828-a1098646e40f/go.mod h1:9a5FoYxu9rPCvV4FEo0DkJSqqCZ80FCeB9Y4haBI2FQ=
+github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209220046-58b6a279a92c h1:Tmz4eh5pkVfpe0Wo4AYPUYElilqQiZ4VQARRs0+wLOQ=
+github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209220046-58b6a279a92c/go.mod h1:9a5FoYxu9rPCvV4FEo0DkJSqqCZ80FCeB9Y4haBI2FQ=
 github.com/mattermost/mattermost/server/public v0.0.12 h1:iunc9q4/XkArOrndEUn73uFw6v9TOEXEtp6Nm6Iv218=
 github.com/mattermost/mattermost/server/public v0.0.12/go.mod h1:Bk+atJcELCIk9Yeq5FoqTr+gra9704+X4amrlwlTgSc=
 github.com/mattermost/rtcd v0.13.1-0.20240130215417-312539a7e048 h1:0MUn4Vg6N62VAGA+l8vMwfpfkxVGL5shQHAjiF3YZpA=
