@@ -9,6 +9,7 @@ import (
 	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,7 +20,7 @@ const (
 	transcriberQueueChBuffer = 1
 	initialChunkSize         = 2 * time.Second
 	chunkBackoffStep         = 1 * time.Second
-	maxChunkSize             = 4 * time.Second // we will back off to this chunk size when overloaded
+	maxChunkSize             = 5 * time.Second // we will back off to this chunk size when overloaded
 	maxWindowSize            = 8 * time.Second
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
@@ -39,6 +40,7 @@ type captionPackage struct {
 }
 
 func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads <-chan []byte, doneCh <-chan struct{}) {
+	transcriptionID := os.Getenv("TRANSCRIPTION_ID")
 	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create opus decoder for live captions",
@@ -169,31 +171,41 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				prevWindowLen = 0
 				prevTranscribedPos = 0
 				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
-					SessionID:  ctx.sessionID,
-					MetricName: public.MetricPressureReleased,
+					TranscriptionID: transcriptionID,
+					MetricName:      public.MetricPressureReleased,
 				}, false); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
 
-				// Backoff on the chunk ticker to reduce the pressure.
+				// Backoff on the ticker to reduce the pressure.
 				curTickRateNs := t.transcriberTickRateNs.Load()
 				if curTickRateNs < int64(maxChunkSize) {
 					newTickRateNs := curTickRateNs + int64(chunkBackoffStep)
 					t.transcriberTickRateNs.CompareAndSwap(curTickRateNs, newTickRateNs)
 					// if swap didn't work, another routine must have increased it. Regardless, use newTickRateNs.
 					myTickRateNs = newTickRateNs
-					ticker.Reset(time.Duration(newTickRateNs))
+					ticker.Reset(time.Duration(myTickRateNs))
+
+					if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+						TranscriptionID: transcriptionID,
+						MetricName:      public.MetricTickRate,
+						TickRateMs:      float64(time.Duration(myTickRateNs).Milliseconds()),
+					}, false); err != nil {
+						slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
+							slog.String("err", err.Error()),
+							slog.String("trackID", ctx.trackID))
+					}
 				}
 				continue
 			}
 
-			// We're ok for pressure, but adjust in case another routine changed the tickRate.
+			// We're ok for pressure, but check if another routine changed the tickRate.
 			curTickRateNs := t.transcriberTickRateNs.Load()
-			if curTickRateNs != myTickRateNs {
-				ticker.Reset(time.Duration(curTickRateNs))
+			if myTickRateNs != curTickRateNs {
 				myTickRateNs = curTickRateNs
+				ticker.Reset(time.Duration(myTickRateNs))
 			}
 
 			prevAudioAt = time.Now()
@@ -268,8 +280,8 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				break
 			default:
 				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
-					SessionID:  ctx.sessionID,
-					MetricName: public.MetricTranscriberBufFull,
+					TranscriptionID: transcriptionID,
+					MetricName:      public.MetricTranscriberBufFull,
 				}, false); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
 						slog.String("err", err.Error()),

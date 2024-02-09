@@ -3,7 +3,7 @@ module github.com/mattermost/calls-transcriber
 go 1.21.4
 
 require (
-	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209024906-5e803306ee88
+	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240209210828-a1098646e40f
 	github.com/mattermost/mattermost/server/public v0.0.12
 	github.com/mattermost/rtcd v0.13.1-0.20240130215417-312539a7e048
 	github.com/pion/interceptor v0.1.25
