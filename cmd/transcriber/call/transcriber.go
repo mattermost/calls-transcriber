@@ -35,9 +35,9 @@ type Transcriber struct {
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
 
-	captionQueue  chan captionPackage
-	captionWg     sync.WaitGroup
-	captionDoneCh chan struct{}
+	transcriberQueueCh chan captionPackage
+	transcriberWg      sync.WaitGroup
+	transcriberDoneCh  chan struct{}
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
@@ -59,14 +59,14 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	apiClient.SetToken(cfg.AuthToken)
 
 	return &Transcriber{
-		cfg:           cfg,
-		client:        client,
-		apiClient:     apiClient,
-		errCh:         make(chan error, 1),
-		doneCh:        make(chan struct{}),
-		trackCtxs:     make(chan trackContext, maxTracksContexes),
-		captionQueue:  make(chan captionPackage),
-		captionDoneCh: make(chan struct{}),
+		cfg:                cfg,
+		client:             client,
+		apiClient:          apiClient,
+		errCh:              make(chan error, 1),
+		doneCh:             make(chan struct{}),
+		trackCtxs:          make(chan trackContext, maxTracksContexes),
+		transcriberQueueCh: make(chan captionPackage, captionQueueBuffer),
+		transcriberDoneCh:  make(chan struct{}),
 	}, nil
 }
 
@@ -184,7 +184,7 @@ func (t *Transcriber) Err() error {
 
 func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
-		close(t.captionDoneCh)
+		close(t.transcriberDoneCh)
 		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})

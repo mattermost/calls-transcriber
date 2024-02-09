@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	captionQueueBuffer       = 1
 	chunkSize                = 2 * time.Second
 	maxWindowSize            = 8 * time.Second
 	pktPayloadChBuffer       = 30
@@ -167,7 +168,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 					SessionID:  ctx.sessionID,
 					MetricName: public.MetricPressureReleased,
 				}, false); err != nil {
-					slog.Error("processLiveCaptionsForTrack: error sending ws captions",
+					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
@@ -238,9 +239,23 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			// adjust the windowGoalSize lower.
 			prevTranscribedPos = len(cleaned)
 			transcribedCh := make(chan string)
-			t.captionQueue <- captionPackage{
+			pkg := captionPackage{
 				pcm:   cleaned,
 				retCh: transcribedCh,
+			}
+			select {
+			case t.transcriberQueueCh <- pkg:
+				break
+			default:
+				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+					SessionID:  ctx.sessionID,
+					MetricName: public.MetricTranscriberBufFull,
+				}, false); err != nil {
+					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
+						slog.String("err", err.Error()),
+						slog.String("trackID", ctx.trackID))
+				}
+				close(transcribedCh)
 			}
 
 			// While audio is being transcribed, we need to cut down the window if it's > windowGoalSize.
@@ -294,6 +309,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						slog.String("trackID", ctx.trackID))
 				case text := <-transcribedCh:
 					if len(text) == 0 {
+						// either transcribedCh was closed above (captionQueueCh full), or audio transcription failed.
 						// Note: this appears to happen when the transcriber fails to decode a block of audio.
 						// Usually the probability returned for the language is very low as well, which makes sense.
 						slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
@@ -319,7 +335,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 func (t *Transcriber) startTranscriberPool() {
 	for i := 0; i < t.cfg.LiveCaptionsNumTranscribers; i++ {
-		t.captionWg.Add(1)
+		t.transcriberWg.Add(1)
 		go t.handleTranscriptionRequests(i)
 	}
 }
@@ -339,15 +355,15 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 			slog.Error("live captions, handleTranscriptionRequests: failed to destroy transcriber",
 				slog.String("err", err.Error()))
 		}
-		t.captionWg.Done()
+		t.transcriberWg.Done()
 	}()
 
 	for {
 		select {
-		case <-t.captionDoneCh:
+		case <-t.transcriberDoneCh:
 			slog.Debug(fmt.Sprintf("live captions, handleTranscriptionRequests: closing transcriber #%d", num))
 			return
-		case packet := <-t.captionQueue:
+		case packet := <-t.transcriberQueueCh:
 			transcribed, _, err := transcriber.Transcribe(packet.pcm)
 			if err != nil {
 				slog.Error("live captions, handleTranscriptionRequests: failed to transcribe audio samples",
