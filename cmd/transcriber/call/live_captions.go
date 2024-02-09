@@ -19,6 +19,7 @@ const (
 	maxWindowSizeInMs        = 8000
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
+	windowPressureLimit      = 16 * time.Second // at this point cut the audio down to prevent a death spiral
 
 	// VAD settings
 	vadWindowSizeInSamples  = 512
@@ -109,6 +110,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	window := make([]float32, 0, windowCap)
 	windowGoalSize := maxWindowSizeInMs * trackOutAudioSamplesPerMs
 	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
+	windowPressureLimitSamples := windowPressureLimit.Milliseconds() * trackOutAudioSamplesPerMs
 
 	prevWindowLen := 0
 	var prevAudioAt time.Time
@@ -157,6 +159,17 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				}
 				continue
 			}
+
+			// Pressure valve:
+			// If the transcriber machine is briefly overloaded, you can get into a kind of death spiral
+			// where too much audio has been buffered in toBeTranscribed, and there's no way the transcriber
+			// can finish it all in time, and it will never be able to recover. This happens especially when
+			// number of calls * threads per call > numCPUs. We need to be able to relieve the pressure.
+			if int64(len(window)) > windowPressureLimitSamples {
+				window = window[:windowGoalSize]
+				prevTranscribedPos = 0
+			}
+
 			prevAudioAt = time.Now()
 			prevWindowLen = len(window)
 
