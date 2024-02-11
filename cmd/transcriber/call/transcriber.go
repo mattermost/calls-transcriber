@@ -3,9 +3,7 @@ package call
 import (
 	"context"
 	"fmt"
-	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"log/slog"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -145,16 +143,6 @@ func (t *Transcriber) Start(ctx context.Context) error {
 			slog.Int("LiveCaptionsNumTranscribers", t.cfg.LiveCaptionsNumTranscribers),
 			slog.Int("LiveCaptionsNumThreadsPerTranscriber", t.cfg.LiveCaptionsNumThreadsPerTranscriber))
 		go t.startTranscriberPool()
-
-		// Initialize tick rate metric
-		if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
-			TranscriptionID: os.Getenv("TRANSCRIPTION_ID"),
-			MetricName:      public.MetricTickRate,
-			TickRateMs:      float64(initialChunkSize.Milliseconds()),
-		}, false); err != nil {
-			slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
-				slog.String("err", err.Error()))
-		}
 	} else {
 		slog.Info("LiveCaptionsOn is false; not starting the transcriber pool")
 	}

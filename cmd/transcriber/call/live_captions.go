@@ -170,7 +170,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				prevTranscribedPos = 0
 				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
 					SessionID:  ctx.sessionID,
-					MetricName: public.MetricLiveCaptionsWindowDropped,
+					MetricName: public.MetricPressureReleased,
 				}, false); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
 						slog.String("err", err.Error()),
@@ -269,7 +269,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			default:
 				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
 					SessionID:  ctx.sessionID,
-					MetricName: public.MetricLiveCaptionsTranscriberBufFull,
+					MetricName: public.MetricTranscriberBufFull,
 				}, false); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
 						slog.String("err", err.Error()),
