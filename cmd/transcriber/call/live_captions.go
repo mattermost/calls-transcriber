@@ -19,7 +19,7 @@ const (
 	transcriberQueueChBuffer = 1
 	initialChunkSize         = 2 * time.Second
 	chunkBackoffStep         = 1 * time.Second
-	maxChunkSize             = 4 * time.Second // we will back off to this chunk size when overloaded
+	maxChunkSize             = 5 * time.Second // we will back off to this chunk size when overloaded
 	maxWindowSize            = 8 * time.Second
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
@@ -170,14 +170,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				prevTranscribedPos = 0
 				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
 					SessionID:  ctx.sessionID,
-					MetricName: public.MetricPressureReleased,
+					MetricName: public.MetricLiveCaptionsWindowDropped,
 				}, false); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
 
-				// Backoff on the chunk ticker to reduce the pressure.
+				// Backoff on the ticker to reduce the pressure.
 				curTickRateNs := t.transcriberTickRateNs.Load()
 				if curTickRateNs < int64(maxChunkSize) {
 					newTickRateNs := curTickRateNs + int64(chunkBackoffStep)
@@ -189,11 +189,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				continue
 			}
 
-			// We're ok for pressure, but adjust in case another routine changed the tickRate.
+			// We're ok for pressure, but check if another routine changed the tickRate.
 			curTickRateNs := t.transcriberTickRateNs.Load()
-			if curTickRateNs != myTickRateNs {
-				ticker.Reset(time.Duration(curTickRateNs))
+			if myTickRateNs != curTickRateNs {
 				myTickRateNs = curTickRateNs
+				ticker.Reset(time.Duration(myTickRateNs))
 			}
 
 			prevAudioAt = time.Now()
@@ -269,7 +269,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			default:
 				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
 					SessionID:  ctx.sessionID,
-					MetricName: public.MetricTranscriberBufFull,
+					MetricName: public.MetricLiveCaptionsTranscriberBufFull,
 				}, false); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
 						slog.String("err", err.Error()),
