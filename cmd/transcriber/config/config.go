@@ -20,7 +20,7 @@ const (
 	TranscribeAPIDefault                        = TranscribeAPIWhisperCPP
 	OutputFormatDefault                         = OutputFormatVTT
 	LiveCaptionsModelSizeDefault                = ModelSizeTiny
-	LiveCaptionsNumTranscribersDefault          = 2
+	LiveCaptionsNumTranscribersDefault          = 1
 	LiveCaptionsNumThreadsPerTranscriberDefault = 2
 )
 
