@@ -10,7 +10,6 @@ import (
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -21,7 +20,7 @@ const (
 	chunkBackoffStep         = 1 * time.Second
 	maxChunkSize             = 5 * time.Second // we will back off to this chunk size when overloaded
 	maxWindowSize            = 8 * time.Second
-	pktPayloadChBuffer       = 30
+	pktPayloadChBuffer       = trackInAudioRate / trackInFrameSize * 10 // 10 seconds of backbuffer, after which we hard drop.
 	removeWindowAfterSilence = 3 * time.Second
 	windowPressureLimit      = 12 * time.Second // at this point cut the audio down to prevent a death spiral
 
@@ -36,6 +35,192 @@ const (
 type captionPackage struct {
 	pcm   []float32
 	retCh chan string
+}
+
+func (t *Transcriber) processLiveCaptionsForTrackSimple(ctx trackContext, pktPayloads <-chan []byte, doneCh <-chan struct{}) {
+	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
+	if err != nil {
+		slog.Error("processLiveCaptionsForTrackSimple: failed to create opus decoder for live captions",
+			slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
+		return
+	}
+	defer func() {
+		if err := opusDec.Destroy(); err != nil {
+			slog.Error("processLiveCaptionsForTrackSimple: failed to destroy decoder", slog.String("err", err.Error()),
+				slog.String("trackID", ctx.trackID))
+		}
+	}()
+
+	sd, err := speech.NewDetector(speech.DetectorConfig{
+		ModelPath:  filepath.Join(getModelsDir(), "silero_vad.onnx"),
+		SampleRate: trackOutAudioRate,
+		WindowSize: 1536,
+		Threshold:  0.5,
+	})
+	if err != nil {
+		slog.Error("processLiveCaptionsForTrackSimple: failed to create speech detector",
+			slog.String("err", err.Error()),
+			slog.String("trackID", ctx.trackID),
+		)
+		return
+	}
+	defer func() {
+		if err := sd.Destroy(); err != nil {
+			slog.Error("failed to destroy speech detector", slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
+		}
+	}()
+
+	// Parameters
+	windowSamplesMax := trackOutAudioRate * 10       // 10s
+	windowStepSamples := trackOutAudioRate * 3 / 2   // 1.5s
+	silenceSamplesThreshold := trackOutAudioRate * 2 // 2s
+	windowLagThreshold := windowSamplesMax
+
+	// Raw audio data
+	windowPCM := make([]float32, 0, windowSamplesMax)
+	windowStepPCM := make([]float32, windowStepSamples)
+
+	slog.Debug("allocated memory",
+		slog.Int("windowPCM", cap(windowPCM)),
+		slog.Int("windowStepPCM", cap(windowStepPCM)),
+		slog.String("trackID", ctx.trackID),
+	)
+
+	for {
+		windowStepPCMLen := 0
+		silenceSamples := 0
+
+		for {
+			pktReadStart := time.Now()
+			payload, ok := <-pktPayloads
+			if !ok {
+				// Exit on channel close.
+				return
+			}
+
+			// Clear window if there's enough delay in packets arrival.
+			if delaySamples := int(time.Since(pktReadStart).Milliseconds()) * trackOutAudioRate / 1000; len(windowPCM) > 0 && delaySamples > silenceSamplesThreshold {
+				slog.Debug("dropping old data after delay",
+					slog.Int("delaySamples", delaySamples),
+					slog.String("trackID", ctx.trackID),
+				)
+				windowPCM = windowPCM[:0]
+			}
+
+			if len(pktPayloads)*trackOutFrameSize > windowLagThreshold {
+				// We are lagging behind too much, need to drop old frames.
+				slog.Warn("dropping old frames",
+					slog.String("trackID", ctx.trackID),
+				)
+				// TODO: would have to track this through a metric.
+				continue
+			}
+
+			n, err := opusDec.Decode(payload, windowStepPCM[windowStepPCMLen:])
+			if err != nil {
+				slog.Error("failed to decode audio data for live captions",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+			windowStepPCMLen += n
+			// Keep reading until we have windowStepSamples worth of audio.
+			if windowStepPCMLen < windowStepSamples {
+				continue
+			}
+			windowStepPCMLen = 0
+
+			segments, err := sd.Detect(windowStepPCM)
+			if err != nil {
+				slog.Warn("failed to detect speech",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+			if err := sd.Reset(); err != nil {
+				slog.Error("failed to reset speech detector",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+
+			if len(segments) > 0 {
+				slog.Info("speech detected",
+					slog.Int("windowStepSamples", windowStepSamples),
+					slog.String("trackID", ctx.trackID),
+				)
+				break
+			}
+
+			silenceSamples += len(windowStepPCM)
+		}
+
+		// Clear window after extended silence to remove any out-of-date audio data.
+		if len(windowPCM) > 0 && silenceSamples > silenceSamplesThreshold {
+			slog.Debug("dropping old data after silence",
+				slog.Int("silenceSamples", silenceSamples),
+				slog.String("trackID", ctx.trackID),
+			)
+			windowPCM = windowPCM[:0]
+		}
+
+		prevWindowSamplesKeep := min(len(windowPCM), windowSamplesMax-windowStepSamples)
+		windowPCM = windowPCM[len(windowPCM)-prevWindowSamplesKeep:]
+		windowPCM = append(windowPCM, windowStepPCM...)
+
+		transcribedCh := make(chan string, 1)
+		pkg := captionPackage{
+			pcm:   windowPCM,
+			retCh: transcribedCh,
+		}
+
+		slog.Debug("stats", slog.Int("windowPCM", len(windowPCM)),
+			slog.String("trackID", ctx.trackID))
+
+		startTS := time.Now()
+		select {
+		case t.transcriberQueueCh <- pkg:
+		case <-doneCh:
+			return
+		default:
+			// TODO: check whether it would be better to rely on a timeout here to be a bit
+			// less aggressive. Should only be useful in case of crosstalk though.
+
+			slog.Warn("transcriberQueueCh full", slog.String("trackID", ctx.trackID))
+
+			if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+				SessionID:  ctx.sessionID,
+				MetricName: public.MetricLiveCaptionsTranscriberBufFull,
+			}, false); err != nil {
+				slog.Error("processLiveCaptionsForTrackSimple: error sending wsEvMetric MetricTranscriberBufFull",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+			continue
+		}
+
+		select {
+		// TODO: consider if adding a timeout here adds value. If the transcribing
+		// process takes unreasonably long to return a result it may be pointless to send the data.
+
+		case text := <-transcribedCh:
+			slog.Info(text,
+				slog.Any("dur", time.Since(startTS)),
+				slog.String("trackID", ctx.trackID),
+			)
+			if len(text) == 0 {
+				break
+			}
+			if err := t.client.SendWs(wsEvCaption, public.CaptionMsg{
+				SessionID: ctx.sessionID,
+				UserID:    ctx.user.Id,
+				Text:      text,
+			}, false); err != nil {
+				slog.Error("processLiveCaptionsForTrackSimple: error sending ws captions",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+		case <-doneCh:
+			return
+		}
+	}
 }
 
 func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads <-chan []byte, doneCh <-chan struct{}) {
@@ -259,6 +444,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			// adjust the windowGoalSize lower.
 			prevTranscribedPos = len(cleaned)
 			transcribedCh := make(chan string)
+
 			pkg := captionPackage{
 				pcm:   cleaned,
 				retCh: transcribedCh,
@@ -392,11 +578,12 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 				return
 			}
 
-			var text []string
-			for _, s := range transcribed {
-				text = append(text, s.Text)
+			if len(transcribed) == 0 {
+				packet.retCh <- ""
+				return
 			}
-			packet.retCh <- strings.Join(text, " ")
+
+			packet.retCh <- transcribed[0].Text
 		}
 	}
 }
@@ -410,6 +597,8 @@ func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, erro
 			NoContext:     true, // do not use previous translations as context for next translation: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321225563
 			AudioContext:  512,  // a bit more than 10seconds: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321230379
 			PrintProgress: false,
+			SingleSegment: true,
+			Language:      "en",
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

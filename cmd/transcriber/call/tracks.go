@@ -126,7 +126,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 			close(doneChan)
 		}()
 
-		go t.processLiveCaptionsForTrack(ctx, pktPayloadCh, doneChan)
+		go t.processLiveCaptionsForTrackSimple(ctx, pktPayloadCh, doneChan)
 	}
 
 	// Read track audio:
@@ -221,7 +221,12 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 		}
 
 		if t.cfg.LiveCaptionsOn {
-			pktPayloadCh <- pkt.Payload
+			select {
+			case pktPayloadCh <- pkt.Payload:
+			default:
+				slog.Warn("dropping pkt, buffer is full",
+					slog.String("trackID", ctx.trackID))
+			}
 		}
 	}
 
