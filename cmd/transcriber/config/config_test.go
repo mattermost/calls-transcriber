@@ -235,7 +235,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			ModelSize:                            ModelSizeDefault,
 			OutputFormat:                         OutputFormatDefault,
 			NumThreads:                           max(1, runtime.NumCPU()/2),
-			LiveCaptionsNumTranscribers:          min(LiveCaptionsNumTranscribersDefault, runtime.NumCPU()/2),
+			LiveCaptionsNumTranscribers:          LiveCaptionsNumTranscribersDefault,
 			LiveCaptionsNumThreadsPerTranscriber: 2,
 			LiveCaptionsModelSize:                LiveCaptionsModelSizeDefault,
 			OutputOptions: OutputOptions{
@@ -262,7 +262,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			ModelSize:                            ModelSizeMedium,
 			OutputFormat:                         OutputFormatDefault,
 			NumThreads:                           max(1, runtime.NumCPU()/2),
-			LiveCaptionsNumTranscribers:          min(LiveCaptionsNumTranscribersDefault, runtime.NumCPU()/2),
+			LiveCaptionsNumTranscribers:          LiveCaptionsNumTranscribersDefault,
 			LiveCaptionsNumThreadsPerTranscriber: 2,
 			LiveCaptionsModelSize:                LiveCaptionsModelSizeDefault,
 			OutputOptions: OutputOptions{

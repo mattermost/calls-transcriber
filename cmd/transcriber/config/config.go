@@ -194,7 +194,7 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 		cfg.LiveCaptionsModelSize = LiveCaptionsModelSizeDefault
 	}
 	if cfg.LiveCaptionsNumTranscribers == 0 {
-		cfg.LiveCaptionsNumTranscribers = min(LiveCaptionsNumTranscribersDefault, runtime.NumCPU()/2)
+		cfg.LiveCaptionsNumTranscribers = LiveCaptionsNumTranscribersDefault
 	}
 	if cfg.LiveCaptionsNumThreadsPerTranscriber == 0 {
 		cfg.LiveCaptionsNumThreadsPerTranscriber = LiveCaptionsNumThreadsPerTranscriberDefault
