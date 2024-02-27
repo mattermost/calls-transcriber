@@ -17,6 +17,7 @@ var idRE = regexp.MustCompile(`^[a-z0-9]{26}$`)
 const (
 	// defaults
 	ModelSizeDefault                            = ModelSizeBase
+	NumThreadsDefault                           = 2
 	TranscribeAPIDefault                        = TranscribeAPIWhisperCPP
 	OutputFormatDefault                         = OutputFormatVTT
 	LiveCaptionsModelSizeDefault                = ModelSizeTiny
@@ -179,7 +180,7 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 	}
 
 	if cfg.NumThreads == 0 {
-		cfg.NumThreads = max(1, runtime.NumCPU()/2)
+		cfg.NumThreads = min(NumThreadsDefault, runtime.NumCPU()/2)
 	}
 
 	if cfg.OutputOptions.WebVTT.IsEmpty() {
