@@ -35,6 +35,13 @@ endif
 OS                      := linux
 # Fallback to amd64 if ARCH is still unset.
 ARCH                    ?= amd64
+# We need to detect M1 host platforms.
+IS_M1                   := false
+ifeq ($(shell uname -s),Darwin)
+ifeq ($(shell uname -p),arm)
+IS_M1 = true
+endif
+endif
 
 ## CGO dependencies
 # Whisper.cpp
@@ -191,9 +198,11 @@ endif
 	--build-arg WHISPER_SHA=${WHISPER_SHA} \
 	--build-arg WHISPER_MODELS=${WHISPER_MODELS} \
 	--build-arg ONNX_VERSION=${ONNX_VERSION} \
+	--build-arg IS_M1=${IS_M1} \
 	-f ${DOCKER_FILE} . \
 	-t ${DOCKER_TAG} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION} for ${DOCKER_BUILD_PLATFORMS}
+ifeq ($(CI),true)
 ifneq ($(shell echo $(APP_VERSION) | egrep '^v([0-9]+\.){0,2}(\*|[0-9]+)'),)
 ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
 	$(AT)$(DOCKER) buildx build \
@@ -208,6 +217,7 @@ ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
 	--build-arg ONNX_VERSION=${ONNX_VERSION} \
 	-f ${DOCKER_FILE} . \
 	-t ${DOCKER_REGISTRY}/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
+endif
 endif
 endif
 

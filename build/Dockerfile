@@ -29,6 +29,7 @@ ARG WHISPER_SHA
 ARG WHISPER_MODELS
 ARG ONNX_VERSION
 ARG DEBIAN_FRONTEND=noninteractive
+ARG IS_M1
 
 # Setup directories structure and compile
 # We first copy just the build directory so that we can properly cache dependencies which can take a while to download.

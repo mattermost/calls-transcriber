@@ -15,6 +15,12 @@ if [ "$TARGET_ARCH" == "arm64" ]; then
 	ONNX_SHA=4c1a21bd9c3acc17d4176a09b89602954f511a97d489be0cfdf356ebd789c409
 fi
 
+UNAME_M=$(uname -m)
+if [ "$IS_M1" == "true" ]; then
+	echo "Overriding UNAME_M on detected M1 host";
+	UNAME_M="arm64"
+fi
+
 cd /tmp && \
 wget https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz && \
 echo "${OPUS_SHA} opus-${OPUS_VERSION}.tar.gz" | sha256sum --check && \
@@ -28,7 +34,7 @@ echo "${WHISPER_SHA} v${WHISPER_VERSION}.tar.gz" | sha256sum --check && \
 tar xf v${WHISPER_VERSION}.tar.gz && \
 cd whisper.cpp-${WHISPER_VERSION} && \
 for model in ${MODELS}; do ./models/download-ggml-model.sh "${model}"; done && \
-make -j4 libwhisper.a && \
+make -j4 libwhisper.a UNAME_M=${UNAME_M} && \
 cd /tmp && \
 wget https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION}.tgz && \
 echo "${ONNX_SHA} onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION}.tgz" | sha256sum --check && \
