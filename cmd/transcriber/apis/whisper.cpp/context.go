@@ -28,6 +28,8 @@ type Config struct {
 	AudioContext int
 	// Whether or not to print progress to stdout (default false).
 	PrintProgress bool
+	// Language to use (defaults to autodetection).
+	Language string
 }
 
 func (c Config) IsValid() error {
@@ -80,7 +82,10 @@ func NewContext(cfg Config) (*Context, error) {
 	c.params.no_context = C.bool(c.cfg.NoContext)
 	c.params.audio_ctx = C.int(c.cfg.AudioContext)
 	c.params.n_threads = C.int(c.cfg.NumThreads)
-	c.params.language = C.CString("auto")
+	if c.cfg.Language == "" {
+		c.cfg.Language = "auto"
+	}
+	c.params.language = C.CString(c.cfg.Language)
 	c.params.print_progress = C.bool(c.cfg.PrintProgress)
 
 	return &c, nil

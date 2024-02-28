@@ -410,6 +410,7 @@ func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, erro
 			NoContext:     true, // do not use previous translations as context for next translation: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321225563
 			AudioContext:  512,  // a bit more than 10seconds: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321230379
 			PrintProgress: false,
+			Language:      "en",
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)
