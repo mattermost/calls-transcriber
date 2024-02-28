@@ -10,7 +10,6 @@ import (
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -392,11 +391,11 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 				return
 			}
 
-			var text []string
-			for _, s := range transcribed {
-				text = append(text, s.Text)
+			if len(transcribed) == 0 {
+				packet.retCh <- ""
+			} else {
+				packet.retCh <- transcribed[0].Text
 			}
-			packet.retCh <- strings.Join(text, " ")
 		}
 	}
 }
@@ -411,6 +410,7 @@ func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, erro
 			AudioContext:  512,  // a bit more than 10seconds: https://github.com/ggerganov/whisper.cpp/pull/141#issuecomment-1321230379
 			PrintProgress: false,
 			Language:      "en",
+			SingleSegment: true,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

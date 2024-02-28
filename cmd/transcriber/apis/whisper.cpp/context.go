@@ -30,6 +30,8 @@ type Config struct {
 	PrintProgress bool
 	// Language to use (defaults to autodetection).
 	Language string
+	// Whether or not to generate a single segment (default false).
+	SingleSegment bool
 }
 
 func (c Config) IsValid() error {
@@ -86,6 +88,7 @@ func NewContext(cfg Config) (*Context, error) {
 		c.cfg.Language = "auto"
 	}
 	c.params.language = C.CString(c.cfg.Language)
+	c.params.single_segment = C.bool(c.cfg.SingleSegment)
 	c.params.print_progress = C.bool(c.cfg.PrintProgress)
 
 	return &c, nil
