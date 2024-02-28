@@ -16,9 +16,7 @@ import (
 
 const (
 	transcriberQueueChBuffer = 1
-	initialChunkSize         = 2 * time.Second
-	chunkBackoffStep         = 1 * time.Second
-	maxChunkSize             = 5 * time.Second // we will back off to this chunk size when overloaded
+	tickRate                 = 2 * time.Second
 	maxWindowSize            = 8 * time.Second
 	pktPayloadChBuffer       = 30
 	removeWindowAfterSilence = 3 * time.Second
@@ -81,7 +79,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	// guess of the outside amount of time we may be waiting between calls to the transcribing pool.
 	// If it's not big enough, we may get a small hiccup while it resizes, but no big deal: it will only
 	// affect the readTrackPktPayloads goroutine, and the channel it's reading from has a healthy buffer.
-	tickRate := time.Duration(t.transcriberTickRateNs.Load())
 	toBeTranscribed := make([]float32, 0, 3*tickRate.Milliseconds()*trackOutAudioSamplesPerMs)
 	toBeTranslatedMut := sync.RWMutex{}
 	pcmBuf := make([]float32, trackOutFrameSize)
@@ -113,8 +110,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	var prevAudioAt time.Time
 	prevTranscribedPos := 0
 
-	myTickRateNs := t.transcriberTickRateNs.Load()
-	ticker := time.NewTicker(time.Duration(myTickRateNs))
+	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
 
 	// Algorithm summary:
@@ -175,24 +171,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
-
-				// Backoff on the ticker to reduce the pressure.
-				curTickRateNs := t.transcriberTickRateNs.Load()
-				if curTickRateNs < int64(maxChunkSize) {
-					newTickRateNs := curTickRateNs + int64(chunkBackoffStep)
-					t.transcriberTickRateNs.CompareAndSwap(curTickRateNs, newTickRateNs)
-					// if swap didn't work, another routine must have increased it. Regardless, use newTickRateNs.
-					myTickRateNs = newTickRateNs
-					ticker.Reset(time.Duration(newTickRateNs))
-				}
 				continue
-			}
-
-			// We're ok for pressure, but check if another routine changed the tickRate.
-			curTickRateNs := t.transcriberTickRateNs.Load()
-			if myTickRateNs != curTickRateNs {
-				myTickRateNs = curTickRateNs
-				ticker.Reset(time.Duration(myTickRateNs))
 			}
 
 			prevAudioAt = time.Now()
