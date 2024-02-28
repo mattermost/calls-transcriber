@@ -241,14 +241,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 					silenceLength := segments[len(segments)-1].End - segments[prevtranscribedSeg].Start
 					if silenceLength >= int(removeWindowAfterSilenceSamples) {
 						// 1. untranscribed data is all silence, and there's been enough silence to end this window.
-						fmt.Printf("<><> all untranscribed data is silence, and segLen: %d > removeWindowAfterSilenceSamples: %d, therefore clearing window.\n", silenceLength, removeWindowAfterSilenceSamples)
+						//fmt.Printf("<><> all untranscribed data is silence, and segLen: %d > removeWindowAfterSilenceSamples: %d, therefore clearing window.\n", silenceLength, removeWindowAfterSilenceSamples)
 						window = window[:0]
 						prevTranscribedPos = 0
 						prevWindowLen = 0
 						continue
 					}
 					// 2. all new (untranscribed) data is silence, so don't send to the transcriber.
-					fmt.Printf("<><> all untranscribed data is silence; not sending to transcriber\n")
+					//fmt.Printf("<><> all untranscribed data is silence; not sending to transcriber\n")
 					continue
 				}
 			}
@@ -296,19 +296,19 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 					var cutUpTo int
 					if len(segments) == 0 {
 						// We don't have a complete next segment yet: cut to end of oldest segment.
-						fmt.Printf("<><> we don't have complete next segment yet, cutUpTo oldest.End: %d\n", oldestSegment.End)
+						//fmt.Printf("<><> we don't have complete next segment yet, cutUpTo oldest.End: %d\n", oldestSegment.End)
 						cutUpTo = oldestSegment.End
 					} else {
 						// Cut up to start of segment we're keeping.
-						fmt.Printf("<><> cutUpTo start of segment we're keeping. Start: %d\n", segments[0].Start)
+						//fmt.Printf("<><> cutUpTo start of segment we're keeping. Start: %d\n", segments[0].Start)
 						cutUpTo = segments[0].Start
 					}
 					if cutUpTo > len(cleaned) {
-						fmt.Printf("<><> ** cutUpTo: %d > len(cleaned) %d", cutUpTo, len(cleaned))
+						//fmt.Printf("<><> ** cutUpTo: %d > len(cleaned) %d", cutUpTo, len(cleaned))
 						cutUpTo = len(cleaned)
 					}
 					if cutUpTo > len(window) {
-						fmt.Printf("<><> ** cutUpTo: %d > len(window) %d", cutUpTo, len(window))
+						//fmt.Printf("<><> ** cutUpTo: %d > len(window) %d", cutUpTo, len(window))
 						cutUpTo = len(window)
 					}
 					cleaned = cleaned[cutUpTo:]
