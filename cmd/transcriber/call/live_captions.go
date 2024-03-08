@@ -1,6 +1,7 @@
 package call
 
 import (
+	"errors"
 	"fmt"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/whisper.cpp"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
@@ -8,9 +9,10 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"github.com/streamer45/silero-vad-go/speech"
+	"log"
 	"log/slog"
+	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
@@ -18,9 +20,9 @@ const (
 	transcriberQueueChBuffer = 1
 	tickRate                 = 2 * time.Second
 	maxWindowSize            = 8 * time.Second
-	pktPayloadChBuffer       = 30
+	windowPressureLimitSec   = 12                                                           // at this point cut the audio down to prevent a death spiral
+	pktPayloadChBuffer       = trackInAudioRate / trackInFrameSize * windowPressureLimitSec // hard drop after windowPressureLimitSec seconds of audio backing up
 	removeWindowAfterSilence = 3 * time.Second
-	windowPressureLimit      = 12 * time.Second // at this point cut the audio down to prevent a death spiral
 
 	// VAD settings
 	vadWindowSizeInSamples  = 512
@@ -36,6 +38,15 @@ type captionPackage struct {
 }
 
 func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads <-chan []byte, doneCh <-chan struct{}) {
+
+	// TODO: removeme
+	f, err := os.OpenFile("livecaptions.log",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println(err)
+	}
+	defer f.Close()
+
 	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create opus decoder for live captions",
@@ -74,41 +85,42 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			slog.String("trackID", ctx.trackID))
 	}()
 
-	// readTrackPktPayloads reads incoming pktPayload data from the track and converts it to PCM.
-	// toBeTranscribed stores pcm data until it can be added to the window. The capacity is just an
-	// guess of the outside amount of time we may be waiting between calls to the transcribing pool.
-	// If it's not big enough, we may get a small hiccup while it resizes, but no big deal: it will only
-	// affect the readTrackPktPayloads goroutine, and the channel it's reading from has a healthy buffer.
-	toBeTranscribed := make([]float32, 0, 3*tickRate.Milliseconds()*trackOutAudioSamplesPerMs)
-	toBeTranslatedMut := sync.RWMutex{}
+	windowPressureLimitSamples := windowPressureLimitSec * 1000 * trackOutAudioSamplesPerMs
+	window := make([]float32, 0, windowPressureLimitSamples)
+	windowGoalSize := int(maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs)
+	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
 	pcmBuf := make([]float32, trackOutFrameSize)
-	readTrackPktPayloads := func() {
-		for payload := range pktPayloads {
-			n, err := opusDec.Decode(payload, pcmBuf)
-			if err != nil {
-				slog.Error("failed to decode audio data for live captions",
-					slog.String("err", err.Error()),
-					slog.String("trackID", ctx.trackID))
-			}
 
-			toBeTranslatedMut.Lock()
-			toBeTranscribed = append(toBeTranscribed, pcmBuf[:n]...)
-			toBeTranslatedMut.Unlock()
+	// readTrackPktPayloads reads incoming pktPayload data from the track and converts it to PCM.
+	// It places the audio data into window.
+	readTrackPktPayloads := func() error {
+		for {
+			select {
+			case payload, ok := <-pktPayloads:
+				if !ok {
+					// Exit on channel close
+					return errors.New("closed")
+				}
+				n, err := opusDec.Decode(payload, pcmBuf)
+				if err != nil {
+					slog.Error("failed to decode audio data for live captions",
+						slog.String("err", err.Error()),
+						slog.String("trackID", ctx.trackID))
+				}
+				window = append(window, pcmBuf[:n]...)
+			default:
+				// done emptying
+				return nil
+			}
 		}
 	}
-	go readTrackPktPayloads()
 
 	// set capacity to our windowPressureLimit (+2 chunks, because we gather window + 1 tick
 	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
-	windowCap := (windowPressureLimit.Milliseconds() + 2*tickRate.Milliseconds()) * trackOutAudioSamplesPerMs
-	window := make([]float32, 0, windowCap)
-	windowGoalSize := maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs
-	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
-	windowPressureLimitSamples := windowPressureLimit.Milliseconds() * trackOutAudioSamplesPerMs
+	prevTranscribedPos := 0
 
 	prevWindowLen := 0
 	var prevAudioAt time.Time
-	prevTranscribedPos := 0
 
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
@@ -130,13 +142,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 		case <-doneCh:
 			return
 		case <-ticker.C:
-			toBeTranslatedMut.Lock()
-			window = append(window, toBeTranscribed...)
+			// empty the waiting pktPayloads
+			if err := readTrackPktPayloads(); err != nil {
+				// exit on close
+				return
+			}
 			// track how long we were waiting until consuming the next batch of audio data, as a measure
 			// of the pressure on the transcription process
-			newAudioLenMs := len(toBeTranscribed) / trackOutAudioSamplesPerMs
-			toBeTranscribed = toBeTranscribed[:0]
-			toBeTranslatedMut.Unlock()
+			newAudioLenMs := len(window) / trackOutAudioSamplesPerMs
 
 			// If we don't have enough samples, ignore the window.
 			if len(window) < vadWindowSizeInSamples {
@@ -159,7 +172,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			// where too much audio has been buffered in toBeTranscribed, and there's no way the transcriber
 			// can finish it all in time, and it will never be able to recover. This happens especially when
 			// number of calls * threads per call > numCPUs. We need to be able to relieve the pressure.
-			if int64(len(window)) > windowPressureLimitSamples {
+			if len(window) > windowPressureLimitSamples {
 				window = window[:0]
 				prevWindowLen = 0
 				prevTranscribedPos = 0
@@ -174,6 +187,13 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				continue
 			}
 
+			//// Now we cut down to our desired window length
+			//if len(window) > windowGoalSize {
+			//	overTheGoalBy := len(window) - windowGoalSize
+			//	fmt.Printf("<><> overTheGoalBy: %d\n", overTheGoalBy)
+			//	window = window[overTheGoalBy:]
+			//}
+
 			prevAudioAt = time.Now()
 			prevWindowLen = len(window)
 
@@ -182,6 +202,17 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				slog.Error("processLiveCaptionsForTrack: vad failed", slog.String("err", err.Error()))
 				continue
 			}
+			//if err := sd.Reset(); err != nil {
+			//	slog.Error("failed to reset speech detector",
+			//		slog.String("err", err.Error()),
+			//		slog.String("trackID", ctx.trackID))
+			//}
+			//
+			//if len(segments) == 0 {
+			//	continue
+			//}
+			//
+			////cleaned := cleanAudio(window, segments)
 
 			//fmt.Printf("<><> cleaned len: %d, window len: %d, num segments: %d, prevTranscribedPos: %d\n", len(cleaned), len(window), len(segments), prevTranscribedPos)
 			// Even more detailed debugging:
@@ -263,7 +294,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			// if the speaker doesn't take breaths between words...
 			// So consider guarding against that. Maybe fallback to cutting in the middle,
 			// to prevent starting the next part of a run-on sentence from zero.
-			for int64(len(cleaned)) > windowGoalSize {
+			for len(cleaned) > windowGoalSize {
 				if len(segments) == 0 {
 					// Should not be possible, but instead of panic-ing, log an error.
 					slog.Error("processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
@@ -324,11 +355,30 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 							slog.String("trackID", ctx.trackID))
 					}
 
+					if _, err := f.WriteString(fmt.Sprintf("(%s) %s\n", ctx.user.Username, text)); err != nil {
+						log.Println(err)
+					}
+
 					break waitForTranscription
 				}
 			}
 		}
 	}
+}
+
+// cleanAudio zeroes out non-speech statements
+func cleanAudio(audio []float32, segments []speech.Segment) []float32 {
+	cleaned := append([]float32(nil), audio...)
+	lastEndAtIdx := 0
+	for _, seg := range segments {
+		startAtIdx := int(seg.SpeechStartAt * trackOutAudioRate)
+		endAtIdx := int(seg.SpeechEndAt * trackOutAudioRate)
+		for i := lastEndAtIdx; i < startAtIdx; i++ {
+			cleaned[i] = 0
+		}
+		lastEndAtIdx = endAtIdx
+	}
+	return cleaned
 }
 
 func (t *Transcriber) startTranscriberPool() {

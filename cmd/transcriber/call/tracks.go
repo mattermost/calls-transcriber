@@ -3,6 +3,7 @@ package call
 import (
 	"errors"
 	"fmt"
+	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"io"
 	"log/slog"
 	"math"
@@ -221,7 +222,18 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 		}
 
 		if t.cfg.LiveCaptionsOn {
-			pktPayloadCh <- pkt.Payload
+			select {
+			case pktPayloadCh <- pkt.Payload:
+			default:
+				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+					SessionID:  ctx.sessionID,
+					MetricName: public.MetricLiveCaptionsPktPayloadChBufFull,
+				}, false); err != nil {
+					slog.Error("processLiveTrack: error sending wsEvMetric MetricLiveCaptionsPktPayloadChBufFull",
+						slog.String("err", err.Error()),
+						slog.String("trackID", ctx.trackID))
+				}
+			}
 		}
 	}
 
