@@ -93,7 +93,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	startedCh := make(chan struct{})
 	t.client.On(client.WSCallRecordingState, func(ctx any) error {
 		if recState, ok := ctx.(client.CallJobState); ok && recState.StartAt > 0 {
-			slog.Debug("received call recording state", slog.Any("recState", recState))
+			slog.Debug("received call recording state", slog.Any("jobState", recState))
 
 			// Note: recState.StartAt is the absolute timestamp of when the recording
 			//       started to process but could come from a different instance and
