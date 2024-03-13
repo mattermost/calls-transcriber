@@ -9,9 +9,7 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"github.com/streamer45/silero-vad-go/speech"
-	"log"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 )
@@ -38,15 +36,6 @@ type captionPackage struct {
 }
 
 func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads <-chan []byte, doneCh <-chan struct{}) {
-
-	// TODO: removeme
-	f, err := os.OpenFile("livecaptions.log",
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Println(err)
-	}
-	defer f.Close()
-
 	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create opus decoder for live captions",
@@ -91,7 +80,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
 	pcmBuf := make([]float32, trackOutFrameSize)
 
-	// readTrackPktPayloads reads incoming pktPayload data from the track and converts it to PCM.
+	// readTrackPktPayloads drains the pktPayload channel (data from the track) and converts it to PCM.
 	// It places the audio data into window.
 	readTrackPktPayloads := func() error {
 		for {
@@ -109,16 +98,13 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				}
 				window = append(window, pcmBuf[:n]...)
 			default:
-				// done emptying
+				// Done draining
 				return nil
 			}
 		}
 	}
 
-	// set capacity to our windowPressureLimit (+2 chunks, because we gather window + 1 tick
-	// before discarding the oldest segment, and ticks can vary a little bit, so be safe)
 	prevTranscribedPos := 0
-
 	prevWindowLen := 0
 	var prevAudioAt time.Time
 
@@ -149,7 +135,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			}
 			// track how long we were waiting until consuming the next batch of audio data, as a measure
 			// of the pressure on the transcription process
-			newAudioLenMs := len(window) / trackOutAudioSamplesPerMs
+			newAudioLenMs := (len(window) - prevWindowLen) / trackOutAudioSamplesPerMs
 
 			// If we don't have enough samples, ignore the window.
 			if len(window) < vadWindowSizeInSamples {
@@ -172,7 +158,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			// where too much audio has been buffered in toBeTranscribed, and there's no way the transcriber
 			// can finish it all in time, and it will never be able to recover. This happens especially when
 			// number of calls * threads per call > numCPUs. We need to be able to relieve the pressure.
-			if len(window) > windowPressureLimitSamples {
+			if len(window) >= windowPressureLimitSamples {
 				window = window[:0]
 				prevWindowLen = 0
 				prevTranscribedPos = 0
@@ -180,19 +166,12 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 					SessionID:  ctx.sessionID,
 					MetricName: public.MetricLiveCaptionsWindowDropped,
 				}, false); err != nil {
-					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricPressureReleased",
+					slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricLiveCaptionsWindowDropped",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
 				continue
 			}
-
-			//// Now we cut down to our desired window length
-			//if len(window) > windowGoalSize {
-			//	overTheGoalBy := len(window) - windowGoalSize
-			//	fmt.Printf("<><> overTheGoalBy: %d\n", overTheGoalBy)
-			//	window = window[overTheGoalBy:]
-			//}
 
 			prevAudioAt = time.Now()
 			prevWindowLen = len(window)
@@ -263,9 +242,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			}
 
 			// Track our new position and send off data for transcription.
-			// Note: if we were delayed (by a slow transcriber), this may cause us to translate a longer-than
-			// expected (much > than windowGoalSize) block of voice. If we see this happening due to slowness,
-			// adjust the windowGoalSize lower.
 			prevTranscribedPos = len(cleaned)
 			transcribedCh := make(chan string)
 			pkg := captionPackage{
@@ -353,10 +329,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						slog.Error("processLiveCaptionsForTrack: error sending ws captions",
 							slog.String("err", err.Error()),
 							slog.String("trackID", ctx.trackID))
-					}
-
-					if _, err := f.WriteString(fmt.Sprintf("(%s) %s\n", ctx.user.Username, text)); err != nil {
-						log.Println(err)
 					}
 
 					break waitForTranscription
