@@ -170,7 +170,7 @@ func TestProcessLiveTrack(t *testing.T) {
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -265,7 +265,7 @@ func TestProcessLiveTrack(t *testing.T) {
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -359,7 +359,7 @@ func TestProcessLiveTrack(t *testing.T) {
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)))
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 

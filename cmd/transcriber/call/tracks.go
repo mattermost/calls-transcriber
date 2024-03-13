@@ -91,7 +91,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 		trackID:   track.ID(),
 		sessionID: sessionID,
 		user:      user,
-		filename:  filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, sessionID)),
+		filename:  filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.ID())),
 	}
 
 	slog.Debug("processing voice track",
