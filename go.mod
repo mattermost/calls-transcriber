@@ -5,7 +5,7 @@ go 1.21.4
 require (
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.0.12
-	github.com/mattermost/rtcd v0.13.1-0.20240130215417-312539a7e048
+	github.com/mattermost/rtcd v0.14.0-dev.0.20240314152404-efacb91f3c4f
 	github.com/pion/interceptor v0.1.25
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.8.3
