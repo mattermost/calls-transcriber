@@ -26,6 +26,8 @@ const (
 	vadWindowSizeInSamples  = 512
 	vadThreshold            = 0.5
 	vadMinSilenceDurationMs = 350
+	vadSpeechPadMs          = 200
+	minSpeechLengthSamples  = 1000 * trackOutAudioSamplesPerMs // 1 second of speech
 )
 
 type captionPackage struct {
@@ -57,6 +59,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 		WindowSize:           vadWindowSizeInSamples,
 		Threshold:            vadThreshold,
 		MinSilenceDurationMs: vadMinSilenceDurationMs,
+		SpeechPadMs:          vadSpeechPadMs,
 	})
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create speech detector",
@@ -184,17 +187,13 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				continue
 			}
 
+			// Prepare the vad segments and the audio for transcription.
 			segments := convertToSegmentSamples(vadSegments, len(window))
+			removeShortSpeeches(segments)
 			cleaned := cleanAudio(window, segments)
 
-			//fmt.Printf("<><> cleaned len: %d, window len: %d, num segments: %d, prevTranscribedPos: %d\n", len(cleaned), len(window), len(segments), prevTranscribedPos)
-			//// Even more detailed debugging:
-			//for i, s := range segments {
-			//	fmt.Printf("%d: Start: \t%d,\tEnd: %d,\tSilent?: \t%v\n", i, s.Start, s.End, s.Silence)
-			//}
-
 			// Before sending off data to be transcribed, check if new data is silence.
-			// If it is, don't send it off.
+			// If it is silence, don't send it off.
 			newDataIsSilence, windowFinished := checkSilence(segments, prevTranscribedPos)
 			if windowFinished {
 				window = window[:0]
@@ -228,12 +227,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				close(transcribedCh)
 			}
 
-			// While audio is being transcribed, we need to cut down the window if it's > maxWindowSize
+			// While audio is being transcribed, we need to cut down the window if it's > maxWindowSize.
 			window, prevTranscribedPos = cutWindowToSize(ctx.trackID, window, segments, prevTranscribedPos)
 			prevWindowLen = len(window)
 
-			// Use a for loop and a select so that we can drop ticks waiting for the transcriber. Unfortunately
-			// that means we need the waitForTranscription label to exit the outer for loop when we're finished.
+			// Use a for loop and a select so that we can drop ticks waiting for the transcriber.
 		waitForTranscription:
 			for {
 				select {
@@ -242,9 +240,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 						slog.String("trackID", ctx.trackID))
 				case text := <-transcribedCh:
 					if len(text) == 0 {
-						// either transcribedCh was closed above (captionQueueCh full), or audio transcription failed.
+						// Either transcribedCh was closed above (captionQueueCh full), or audio transcription failed.
 						// Note: this appears to happen when the transcriber fails to decode a block of audio.
-						// Usually the probability returned for the language is very low as well, which makes sense.
+						// Usually the probability returned for the language is very low, which makes sense.
 						slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 						break waitForTranscription
 					}
@@ -303,6 +301,16 @@ func convertToSegmentSamples(segments []speech.Segment, audioLen int) []segmentS
 	return ret
 }
 
+// removeShortSpeeches removes small sections of speech because either they are not actual words,
+// or the transcriber will have trouble with such a short amount.
+func removeShortSpeeches(segments []segmentSamples) {
+	for i, seg := range segments {
+		if !seg.Silence && (seg.End-seg.Start) < minSpeechLengthSamples {
+			segments[i].Silence = true
+		}
+	}
+}
+
 func cleanAudio(audio []float32, segments []segmentSamples) []float32 {
 	cleaned := append([]float32(nil), audio...)
 	for _, seg := range segments {
@@ -345,12 +353,10 @@ func checkSilence(segments []segmentSamples, prevTranscribedPos int) (newDataIsS
 	silenceLength := segments[len(segments)-1].End - segments[prevtranscribedSeg].Start
 	if silenceLength >= int(removeWindowAfterSilenceSamples) {
 		// 1. untranscribed data is all silence, and there's been enough silence to end this window.
-		//fmt.Printf("<><> all untranscribed data is silence, and segLen: %d > removeWindowAfterSilenceSamples: %d, therefore clearing window.\n", silenceLength, removeWindowAfterSilenceSamples)
 		return true, true
 	}
 
 	// 2. all new (untranscribed) data is silence, so don't send to the transcriber.
-	//fmt.Printf("<><> all untranscribed data is silence; not sending to transcriber\n")
 	return true, false
 }
 
@@ -369,15 +375,13 @@ func cutWindowToSize(trackID string, window []float32, segments []segmentSamples
 			var cutUpTo int
 			if len(segments) == 0 {
 				// We don't have a complete next segment yet: cut to end of oldest segment.
-				//fmt.Printf("<><> ** we don't have complete next segment yet, cutUpTo oldest.End: %d\n", oldestSegment.End)
 				cutUpTo = oldestSegment.End
 			} else {
 				// Cut up to start of segment we're keeping.
-				//fmt.Printf("<><> cutUpTo start of segment we're keeping. Start: %d\n", segments[0].Start)
 				cutUpTo = segments[0].Start
 			}
 			if cutUpTo > len(window) {
-				//fmt.Printf("<><> ******* cutUpTo: %d > len(window) %d", cutUpTo, len(window))
+				// Don't panic, defensive, shouldn't happen.
 				cutUpTo = len(window)
 			}
 			window = window[cutUpTo:]
