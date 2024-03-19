@@ -10,7 +10,7 @@ require (
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.8.3
 	github.com/pion/webrtc/v3 v3.2.21
-	github.com/streamer45/silero-vad-go v0.1.3-0.20240126140637-8c3aae65139a
+	github.com/streamer45/silero-vad-go v0.1.3-0.20240319124904-3e7e59fa58bf
 	github.com/stretchr/testify v1.8.4
 )
 

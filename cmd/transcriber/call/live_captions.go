@@ -25,9 +25,7 @@ const (
 	// VAD settings
 	vadWindowSizeInSamples  = 512
 	vadThreshold            = 0.5
-	vadMinSilenceDurationMs = 150
-	vadMinSpeechDurationMs  = 200
-	vadSilencePadMs         = 32
+	vadMinSilenceDurationMs = 350
 )
 
 type captionPackage struct {
@@ -59,8 +57,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 		WindowSize:           vadWindowSizeInSamples,
 		Threshold:            vadThreshold,
 		MinSilenceDurationMs: vadMinSilenceDurationMs,
-		MinSpeechDurationMs:  vadMinSpeechDurationMs,
-		SilencePadMs:         vadSilencePadMs,
 	})
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create speech detector",
@@ -76,12 +72,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 	windowPressureLimitSamples := windowPressureLimitSec * 1000 * trackOutAudioSamplesPerMs
 	window := make([]float32, 0, windowPressureLimitSamples)
-	windowGoalSize := int(maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs)
-	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
 	pcmBuf := make([]float32, trackOutFrameSize)
 
 	// readTrackPktPayloads drains the pktPayload channel (data from the track) and converts it to PCM.
-	// It places the audio data into window.
 	readTrackPktPayloads := func() error {
 		for {
 			select {
@@ -114,10 +107,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	// Algorithm summary:
 	// - Get a cleaned version of the voice (with zeroes where no voice is detected)
 	// - And a list of segments of contiguous speech or silence
-	// - If window goes over its limit, we drop the oldest segments until it's below the limit
 	// - Don't transcribe if data hasn't increased.
 	// - Don't transcribe if new (un-transcribed) data is silence.
 	// - Send the cleaned data (the whole window) to the transcriber pool
+	// - If window goes over its limit, we drop the oldest segments until it's below the limit
 	// - Wait for the transcription (let `tick`s pass so that we're only
 	//   transcribing a particular track once at a time)
 	// - Send the transcription to the plugin to be redistributed to clients.
@@ -176,69 +169,41 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			prevAudioAt = time.Now()
 			prevWindowLen = len(window)
 
-			cleaned, segments, err := sd.DetectRealtime(window)
+			vadSegments, err := sd.Detect(window)
 			if err != nil {
 				slog.Error("processLiveCaptionsForTrack: vad failed", slog.String("err", err.Error()))
 				continue
 			}
-			//if err := sd.Reset(); err != nil {
-			//	slog.Error("failed to reset speech detector",
-			//		slog.String("err", err.Error()),
-			//		slog.String("trackID", ctx.trackID))
-			//}
-			//
-			//if len(segments) == 0 {
-			//	continue
-			//}
-			//
-			////cleaned := cleanAudio(window, segments)
+			if err := sd.Reset(); err != nil {
+				slog.Error("failed to reset speech detector",
+					slog.String("err", err.Error()),
+					slog.String("trackID", ctx.trackID))
+			}
+
+			if len(vadSegments) == 0 {
+				continue
+			}
+
+			segments := convertToSegmentSamples(vadSegments, len(window))
+			cleaned := cleanAudio(window, segments)
 
 			//fmt.Printf("<><> cleaned len: %d, window len: %d, num segments: %d, prevTranscribedPos: %d\n", len(cleaned), len(window), len(segments), prevTranscribedPos)
-			// Even more detailed debugging:
+			//// Even more detailed debugging:
 			//for i, s := range segments {
 			//	fmt.Printf("%d: Start: \t%d,\tEnd: %d,\tSilent?: \t%v\n", i, s.Start, s.End, s.Silence)
 			//}
 
 			// Before sending off data to be transcribed, check if new data is silence.
 			// If it is, don't send it off.
-			//
-			// This is a little complicated because we might miss a tick (if the transcriber
-			// takes > 1 tick to transcribe). That is why we are keeping prevTranscribedPos.
-			// The goals are:
-			// 1. Clear the window if new (untranscribed) data is silence,
-			//    and silence > removeWindowAfterSilence.
-			// 2. Do not send the window to the transcriber if all new (untranscribed) data is silence.
-
-			prevtranscribedSeg := -1
-			for i, seg := range segments {
-				if prevTranscribedPos >= seg.Start && prevTranscribedPos < seg.End {
-					prevtranscribedSeg = i
-					break
-				}
+			newDataIsSilence, windowFinished := checkSilence(segments, prevTranscribedPos)
+			if windowFinished {
+				window = window[:0]
+				prevTranscribedPos = 0
+				prevWindowLen = 0
+				continue
 			}
-
-			if prevtranscribedSeg >= 0 {
-				allSilence := true
-				for i := prevtranscribedSeg; i < len(segments); i++ {
-					if !segments[i].Silence {
-						allSilence = false
-						break
-					}
-				}
-				if allSilence {
-					silenceLength := segments[len(segments)-1].End - segments[prevtranscribedSeg].Start
-					if silenceLength >= int(removeWindowAfterSilenceSamples) {
-						// 1. untranscribed data is all silence, and there's been enough silence to end this window.
-						//fmt.Printf("<><> all untranscribed data is silence, and segLen: %d > removeWindowAfterSilenceSamples: %d, therefore clearing window.\n", silenceLength, removeWindowAfterSilenceSamples)
-						window = window[:0]
-						prevTranscribedPos = 0
-						prevWindowLen = 0
-						continue
-					}
-					// 2. all new (untranscribed) data is silence, so don't send to the transcriber.
-					//fmt.Printf("<><> all untranscribed data is silence; not sending to transcriber\n")
-					continue
-				}
+			if newDataIsSilence {
+				continue
 			}
 
 			// Track our new position and send off data for transcription.
@@ -263,49 +228,12 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				close(transcribedCh)
 			}
 
-			// While audio is being transcribed, we need to cut down the window if it's > windowGoalSize.
-			// This is a bit complicated, because we don't want to cut old speech in the middle
-			// of a word -- that will cause trouble for whisper. So cut by segment (oldest first).
-			// Depending on how wide you make the silence gaps, this might cut then entire window
-			// if the speaker doesn't take breaths between words...
-			// So consider guarding against that. Maybe fallback to cutting in the middle,
-			// to prevent starting the next part of a run-on sentence from zero.
-			for len(cleaned) > windowGoalSize {
-				if len(segments) == 0 {
-					// Should not be possible, but instead of panic-ing, log an error.
-					slog.Error("processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
-						slog.String("trackID", ctx.trackID))
-				} else {
-					var oldestSegment speech.RealtimeSegment
-					oldestSegment, segments = segments[0], segments[1:]
-					var cutUpTo int
-					if len(segments) == 0 {
-						// We don't have a complete next segment yet: cut to end of oldest segment.
-						//fmt.Printf("<><> we don't have complete next segment yet, cutUpTo oldest.End: %d\n", oldestSegment.End)
-						cutUpTo = oldestSegment.End
-					} else {
-						// Cut up to start of segment we're keeping.
-						//fmt.Printf("<><> cutUpTo start of segment we're keeping. Start: %d\n", segments[0].Start)
-						cutUpTo = segments[0].Start
-					}
-					if cutUpTo > len(cleaned) {
-						//fmt.Printf("<><> ** cutUpTo: %d > len(cleaned) %d", cutUpTo, len(cleaned))
-						cutUpTo = len(cleaned)
-					}
-					if cutUpTo > len(window) {
-						//fmt.Printf("<><> ** cutUpTo: %d > len(window) %d", cutUpTo, len(window))
-						cutUpTo = len(window)
-					}
-					cleaned = cleaned[cutUpTo:]
-					window = window[cutUpTo:]
-					prevWindowLen = len(window)
+			// While audio is being transcribed, we need to cut down the window if it's > maxWindowSize
+			window, prevTranscribedPos = cutWindowToSize(ctx.trackID, window, segments, prevTranscribedPos)
+			prevWindowLen = len(window)
 
-					// Adjust our marker for where we've transcribed.
-					// e.g., prevTranscribedPos was 10, we've cut 6, new pos is 10 - 6 = 4.
-					prevTranscribedPos -= cutUpTo
-				}
-			}
-
+			// Use a for loop and a select so that we can drop ticks waiting for the transcriber. Unfortunately
+			// that means we need the waitForTranscription label to exit the outer for loop when we're finished.
 		waitForTranscription:
 			for {
 				select {
@@ -338,19 +266,128 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 	}
 }
 
-// cleanAudio zeroes out non-speech statements
-func cleanAudio(audio []float32, segments []speech.Segment) []float32 {
-	cleaned := append([]float32(nil), audio...)
+type segmentSamples struct {
+	Start   int
+	End     int
+	Silence bool
+}
+
+// convertToSegmentSamples turns the speech.Segments (in time) into segmentSamples (measured in samples)
+func convertToSegmentSamples(segments []speech.Segment, audioLen int) []segmentSamples {
+	var ret []segmentSamples
 	lastEndAtIdx := 0
 	for _, seg := range segments {
-		startAtIdx := int(seg.SpeechStartAt * trackOutAudioRate)
-		endAtIdx := int(seg.SpeechEndAt * trackOutAudioRate)
-		for i := lastEndAtIdx; i < startAtIdx; i++ {
-			cleaned[i] = 0
-		}
-		lastEndAtIdx = endAtIdx
+		start := int(seg.SpeechStartAt * trackOutAudioRate)
+		end := int(seg.SpeechEndAt * trackOutAudioRate)
+		ret = append(ret, segmentSamples{
+			Start:   lastEndAtIdx,
+			End:     start,
+			Silence: true,
+		})
+		ret = append(ret, segmentSamples{
+			Start:   start,
+			End:     end,
+			Silence: false,
+		})
+		lastEndAtIdx = end
 	}
+
+	if lastEndAtIdx < audioLen {
+		ret = append(ret, segmentSamples{
+			Start:   lastEndAtIdx,
+			End:     audioLen,
+			Silence: true,
+		})
+	}
+
+	return ret
+}
+
+func cleanAudio(audio []float32, segments []segmentSamples) []float32 {
+	cleaned := append([]float32(nil), audio...)
+	for _, seg := range segments {
+		if seg.Silence {
+			for i := seg.Start; i < seg.End; i++ {
+				cleaned[i] = 0
+			}
+		}
+	}
+
 	return cleaned
+}
+
+func checkSilence(segments []segmentSamples, prevTranscribedPos int) (newDataIsSilence bool, windowFinished bool) {
+	// This is a little complicated because we might miss a tick (if the transcriber
+	// takes > 1 tick to transcribe). That is why we are keeping prevTranscribedPos.
+	// The goals are:
+	// 1. Clear the window if new (untranscribed) data is silence,
+	//    and silence > removeWindowAfterSilence.
+	// 2. Do not send the window to the transcriber if all new (untranscribed) data is silence.
+
+	removeWindowAfterSilenceSamples := removeWindowAfterSilence.Milliseconds() * trackOutAudioSamplesPerMs
+	prevtranscribedSeg := -1
+	for i, seg := range segments {
+		if prevTranscribedPos >= seg.Start && prevTranscribedPos < seg.End {
+			prevtranscribedSeg = i
+			break
+		}
+	}
+
+	if prevtranscribedSeg == -1 {
+		return false, false
+	}
+
+	for i := prevtranscribedSeg; i < len(segments); i++ {
+		if !segments[i].Silence {
+			return false, false
+		}
+	}
+	silenceLength := segments[len(segments)-1].End - segments[prevtranscribedSeg].Start
+	if silenceLength >= int(removeWindowAfterSilenceSamples) {
+		// 1. untranscribed data is all silence, and there's been enough silence to end this window.
+		//fmt.Printf("<><> all untranscribed data is silence, and segLen: %d > removeWindowAfterSilenceSamples: %d, therefore clearing window.\n", silenceLength, removeWindowAfterSilenceSamples)
+		return true, true
+	}
+
+	// 2. all new (untranscribed) data is silence, so don't send to the transcriber.
+	//fmt.Printf("<><> all untranscribed data is silence; not sending to transcriber\n")
+	return true, false
+}
+
+func cutWindowToSize(trackID string, window []float32, segments []segmentSamples, prevTranscribedPos int) ([]float32, int) {
+	windowGoalSize := int(maxWindowSize.Milliseconds() * trackOutAudioSamplesPerMs)
+
+	for len(window) > windowGoalSize {
+		if len(segments) == 0 {
+			// Should not be possible, but instead of panic-ing, log an error.
+			slog.Error("processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
+				slog.String("trackID", trackID))
+			break
+		} else {
+			var oldestSegment segmentSamples
+			oldestSegment, segments = segments[0], segments[1:]
+			var cutUpTo int
+			if len(segments) == 0 {
+				// We don't have a complete next segment yet: cut to end of oldest segment.
+				//fmt.Printf("<><> ** we don't have complete next segment yet, cutUpTo oldest.End: %d\n", oldestSegment.End)
+				cutUpTo = oldestSegment.End
+			} else {
+				// Cut up to start of segment we're keeping.
+				//fmt.Printf("<><> cutUpTo start of segment we're keeping. Start: %d\n", segments[0].Start)
+				cutUpTo = segments[0].Start
+			}
+			if cutUpTo > len(window) {
+				//fmt.Printf("<><> ******* cutUpTo: %d > len(window) %d", cutUpTo, len(window))
+				cutUpTo = len(window)
+			}
+			window = window[cutUpTo:]
+
+			// Adjust our marker for where we've transcribed.
+			// e.g., prevTranscribedPos was 10, we've cut 6, new pos is 10 - 6 = 4.
+			prevTranscribedPos -= cutUpTo
+		}
+	}
+	return window, prevTranscribedPos
 }
 
 func (t *Transcriber) startTranscriberPool() {
