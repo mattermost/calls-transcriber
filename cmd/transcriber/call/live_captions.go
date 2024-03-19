@@ -369,28 +369,29 @@ func cutWindowToSize(trackID string, window []float32, segments []segmentSamples
 			slog.Error("processLiveCaptionsForTrack: we have zero segments in the window. Should not be possible.",
 				slog.String("trackID", trackID))
 			break
-		} else {
-			var oldestSegment segmentSamples
-			oldestSegment, segments = segments[0], segments[1:]
-			var cutUpTo int
-			if len(segments) == 0 {
-				// We don't have a complete next segment yet: cut to end of oldest segment.
-				cutUpTo = oldestSegment.End
-			} else {
-				// Cut up to start of segment we're keeping.
-				cutUpTo = segments[0].Start
-			}
-			if cutUpTo > len(window) {
-				// Don't panic, defensive, shouldn't happen.
-				cutUpTo = len(window)
-			}
-			window = window[cutUpTo:]
-
-			// Adjust our marker for where we've transcribed.
-			// e.g., prevTranscribedPos was 10, we've cut 6, new pos is 10 - 6 = 4.
-			prevTranscribedPos -= cutUpTo
 		}
+
+		var oldestSegment segmentSamples
+		oldestSegment, segments = segments[0], segments[1:]
+		var cutUpTo int
+		if len(segments) == 0 {
+			// We don't have a complete next segment yet: cut to end of oldest segment.
+			cutUpTo = oldestSegment.End
+		} else {
+			// Cut up to start of segment we're keeping.
+			cutUpTo = segments[0].Start
+		}
+		if cutUpTo > len(window) {
+			// Don't panic, defensive, shouldn't happen.
+			cutUpTo = len(window)
+		}
+		window = window[cutUpTo:]
+
+		// Adjust our marker for where we've transcribed.
+		// e.g., prevTranscribedPos was 10, we've cut 6, new pos is 10 - 6 = 4.
+		prevTranscribedPos -= cutUpTo
 	}
+
 	return window, prevTranscribedPos
 }
 
