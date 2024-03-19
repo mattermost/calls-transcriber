@@ -236,9 +236,8 @@ func (t *Transcriber) handleClose() error {
 	}
 
 	if len(tr) == 0 {
-		// Treating this as an error as want to play safe for now as
-		// it should be extremely rare for a real call to have an empty transcription.
-		return fmt.Errorf("nothing to do, empty transcription")
+		slog.Warn("nothing to do, empty transcription")
+		return nil
 	}
 
 	dur := time.Since(start)
