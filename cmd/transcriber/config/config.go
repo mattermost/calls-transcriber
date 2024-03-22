@@ -23,6 +23,7 @@ const (
 	LiveCaptionsModelSizeDefault                = ModelSizeTiny
 	LiveCaptionsNumTranscribersDefault          = 1
 	LiveCaptionsNumThreadsPerTranscriberDefault = 2
+	LiveCaptionsLanguageDefault                 = "en"
 )
 
 type OutputFormat string
@@ -73,6 +74,7 @@ type CallTranscriberConfig struct {
 	LiveCaptionsModelSize                ModelSize
 	LiveCaptionsNumTranscribers          int
 	LiveCaptionsNumThreadsPerTranscriber int
+	LiveCaptionsLanguage                 string
 }
 
 func (p ModelSize) IsValid() bool {
@@ -157,6 +159,10 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		if !cfg.LiveCaptionsModelSize.IsValid() {
 			return fmt.Errorf("LiveCaptionsModelSize value is not valid")
 		}
+
+		if cfg.LiveCaptionsLanguage == "" {
+			return fmt.Errorf("LiveCaptionsLanguage cannot be empty")
+		}
 	}
 
 	if err := cfg.OutputOptions.Text.IsValid(); err != nil {
@@ -204,6 +210,9 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 	if cfg.LiveCaptionsNumThreadsPerTranscriber == 0 {
 		cfg.LiveCaptionsNumThreadsPerTranscriber = LiveCaptionsNumThreadsPerTranscriberDefault
 	}
+	if cfg.LiveCaptionsLanguage == "" {
+		cfg.LiveCaptionsLanguage = LiveCaptionsLanguageDefault
+	}
 }
 
 func (cfg CallTranscriberConfig) ToEnv() []string {
@@ -225,6 +234,7 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("LIVE_CAPTIONS_MODEL_SIZE=%s", cfg.LiveCaptionsModelSize),
 		fmt.Sprintf("LIVE_CAPTIONS_NUM_TRANSCRIBERS=%d", cfg.LiveCaptionsNumTranscribers),
 		fmt.Sprintf("LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER=%d", cfg.LiveCaptionsNumThreadsPerTranscriber),
+		fmt.Sprintf("LIVE_CAPTIONS_LANGUAGE=%s", cfg.LiveCaptionsLanguage),
 	}
 
 	vars = append(vars, cfg.OutputOptions.WebVTT.ToEnv()...)
@@ -251,6 +261,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		"live_captions_on":               cfg.LiveCaptionsOn,
 		"live_captions_model_size":       cfg.LiveCaptionsModelSize,
 		"live_captions_num_transcribers": cfg.LiveCaptionsNumTranscribers,
+		"live_captions_language":         cfg.LiveCaptionsLanguage,
 		"live_captions_num_threads_per_transcriber": cfg.LiveCaptionsNumThreadsPerTranscriber,
 	}
 
@@ -300,6 +311,9 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	} else {
 		cfg.LiveCaptionsModelSize, _ = m["live_captions_model_size"].(ModelSize)
 	}
+	if language, ok := m["live_captions_language"].(string); ok {
+		cfg.LiveCaptionsLanguage = language
+	}
 
 	if api, ok := m["transcribe_api"].(string); ok {
 		cfg.TranscribeAPI = TranscribeAPI(api)
@@ -334,6 +348,7 @@ func FromEnv() (CallTranscriberConfig, error) {
 	cfg.LiveCaptionsOn, _ = strconv.ParseBool(os.Getenv("LIVE_CAPTIONS_ON"))
 	cfg.LiveCaptionsNumTranscribers, _ = strconv.Atoi(os.Getenv("LIVE_CAPTIONS_NUM_TRANSCRIBERS"))
 	cfg.LiveCaptionsNumThreadsPerTranscriber, _ = strconv.Atoi(os.Getenv("LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER"))
+	cfg.LiveCaptionsLanguage = os.Getenv("LIVE_CAPTIONS_LANGUAGE")
 
 	if val := os.Getenv("TRANSCRIBE_API"); val != "" {
 		cfg.TranscribeAPI = TranscribeAPI(val)

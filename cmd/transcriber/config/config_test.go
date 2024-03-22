@@ -187,6 +187,34 @@ func TestConfigIsValid(t *testing.T) {
 			expectedError: fmt.Sprintf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", runtime.NumCPU()),
 		},
 		{
+			name: "invalid LiveCaptionsLanguage",
+			cfg: CallTranscriberConfig{
+				SiteURL:                              "http://localhost:8065",
+				CallID:                               "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:                               "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:                            "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID:                      "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:                        TranscribeAPIDefault,
+				ModelSize:                            ModelSizeMedium,
+				OutputFormat:                         OutputFormatVTT,
+				NumThreads:                           1,
+				LiveCaptionsOn:                       true,
+				LiveCaptionsNumTranscribers:          runtime.NumCPU() / 2,
+				LiveCaptionsNumThreadsPerTranscriber: 1,
+				LiveCaptionsModelSize:                ModelSizeTiny,
+				LiveCaptionsLanguage:                 "",
+				OutputOptions: OutputOptions{
+					Text: transcribe.TextOptions{
+						CompactOptions: transcribe.TextCompactOptions{
+							SilenceThresholdMs:   2000,
+							MaxSegmentDurationMs: 10000,
+						},
+					},
+				},
+			},
+			expectedError: "LiveCaptionsLanguage cannot be empty",
+		},
+		{
 			name: "valid config",
 			cfg: CallTranscriberConfig{
 				SiteURL:                              "http://localhost:8065",
@@ -202,6 +230,7 @@ func TestConfigIsValid(t *testing.T) {
 				LiveCaptionsNumTranscribers:          runtime.NumCPU() / 2,
 				LiveCaptionsNumThreadsPerTranscriber: 1,
 				LiveCaptionsModelSize:                ModelSizeTiny,
+				LiveCaptionsLanguage:                 LiveCaptionsLanguageDefault,
 				OutputOptions: OutputOptions{
 					Text: transcribe.TextOptions{
 						CompactOptions: transcribe.TextCompactOptions{
@@ -238,6 +267,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			LiveCaptionsNumTranscribers:          LiveCaptionsNumTranscribersDefault,
 			LiveCaptionsNumThreadsPerTranscriber: 2,
 			LiveCaptionsModelSize:                LiveCaptionsModelSizeDefault,
+			LiveCaptionsLanguage:                 LiveCaptionsLanguageDefault,
 			OutputOptions: OutputOptions{
 				WebVTT: transcribe.WebVTTOptions{
 					OmitSpeaker: false,
@@ -265,6 +295,7 @@ func TestConfigSetDefaults(t *testing.T) {
 			LiveCaptionsNumTranscribers:          LiveCaptionsNumTranscribersDefault,
 			LiveCaptionsNumThreadsPerTranscriber: 2,
 			LiveCaptionsModelSize:                LiveCaptionsModelSizeDefault,
+			LiveCaptionsLanguage:                 LiveCaptionsLanguageDefault,
 			OutputOptions: OutputOptions{
 				WebVTT: transcribe.WebVTTOptions{
 					OmitSpeaker: false,
@@ -349,6 +380,7 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 	cfg.LiveCaptionsOn = true
 	cfg.LiveCaptionsNumTranscribers = 1
 	cfg.LiveCaptionsNumThreadsPerTranscriber = 1
+	cfg.LiveCaptionsLanguage = "nl"
 	cfg.SetDefaults()
 	require.Equal(t, []string{
 		"SITE_URL=http://localhost:8065",
@@ -364,6 +396,7 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 		"LIVE_CAPTIONS_MODEL_SIZE=tiny",
 		"LIVE_CAPTIONS_NUM_TRANSCRIBERS=1",
 		"LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER=1",
+		"LIVE_CAPTIONS_LANGUAGE=nl",
 		"WEBVTT_OMIT_SPEAKER=false",
 		"TEXT_COMPACT_SILENCE_THRESHOLD_MS=2000",
 		"TEXT_COMPACT_MAX_SEGMENT_DURATION_MS=10000",
