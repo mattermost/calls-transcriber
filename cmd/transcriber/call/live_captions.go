@@ -270,6 +270,11 @@ type segmentSamples struct {
 
 // convertToSegmentSamples turns the speech.Segments (in time) into segmentSamples (measured in samples)
 func convertToSegmentSamples(segments []speech.Segment, audioLen int) []segmentSamples {
+	// close off the last segment (we know segments > 0)
+	if segments[len(segments)-1].SpeechEndAt == 0 {
+		segments[len(segments)-1].SpeechEndAt = float64(audioLen) / trackOutAudioRate
+	}
+
 	var ret []segmentSamples
 	lastEndAtIdx := 0
 	for _, seg := range segments {
