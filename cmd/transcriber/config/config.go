@@ -180,7 +180,11 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 	}
 
 	if cfg.NumThreads == 0 {
-		cfg.NumThreads = min(NumThreadsDefault, runtime.NumCPU()/2)
+		if cfg.LiveCaptionsOn {
+			cfg.NumThreads = min(NumThreadsDefault, runtime.NumCPU()/2)
+		} else {
+			cfg.NumThreads = max(1, runtime.NumCPU()/2)
+		}
 	}
 
 	if cfg.OutputOptions.WebVTT.IsEmpty() {

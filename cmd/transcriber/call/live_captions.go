@@ -23,11 +23,11 @@ const (
 	removeWindowAfterSilence = 3 * time.Second
 
 	// VAD settings
-	vadWindowSizeInSamples  = 512
+	vadWindowSizeInSamples  = 512 // 30 ms
 	vadThreshold            = 0.5
-	vadMinSilenceDurationMs = 350
-	vadSpeechPadMs          = 200
-	minSpeechLengthSamples  = 1000 * trackOutAudioSamplesPerMs // 1 second of speech
+	vadMinSilenceDurationMs = 150
+	vadSpeechPadMs          = 60
+	minSpeechLengthSamples  = 330 * trackOutAudioSamplesPerMs // padding (120) + 210 of detected speech
 )
 
 type captionPackage struct {
@@ -35,7 +35,7 @@ type captionPackage struct {
 	retCh chan string
 }
 
-func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads <-chan []byte, doneCh <-chan struct{}) {
+func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsCh <-chan []byte) {
 	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create opus decoder for live captions",
@@ -54,8 +54,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 		ModelPath:  filepath.Join(getModelsDir(), "silero_vad.onnx"),
 		SampleRate: trackOutAudioRate,
 
-		// set WindowSize to 512 to get as fine-grained detection as possible (for when
-		// the number of samples don't cleanly divide into the WindowSize
 		WindowSize:           vadWindowSizeInSamples,
 		Threshold:            vadThreshold,
 		MinSilenceDurationMs: vadMinSilenceDurationMs,
@@ -73,18 +71,16 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 			slog.String("trackID", ctx.trackID))
 	}()
 
-	windowPressureLimitSamples := windowPressureLimitSec * 1000 * trackOutAudioSamplesPerMs
-	window := make([]float32, 0, windowPressureLimitSamples)
 	pcmBuf := make([]float32, trackOutFrameSize)
 
-	// readTrackPktPayloads drains the pktPayload channel (data from the track) and converts it to PCM.
-	readTrackPktPayloads := func() error {
+	// readTrackPktPayloads drains the pktPayloadsCh (audio data from the track) and converts it to PCM.
+	readTrackPktPayloads := func(window []float32) ([]float32, error) {
 		for {
 			select {
-			case payload, ok := <-pktPayloads:
+			case payload, ok := <-pktPayloadsCh:
 				if !ok {
 					// Exit on channel close
-					return errors.New("closed")
+					return nil, errors.New("closed")
 				}
 				n, err := opusDec.Decode(payload, pcmBuf)
 				if err != nil {
@@ -95,11 +91,13 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 				window = append(window, pcmBuf[:n]...)
 			default:
 				// Done draining
-				return nil
+				return window, nil
 			}
 		}
 	}
 
+	windowPressureLimitSamples := windowPressureLimitSec * 1000 * trackOutAudioSamplesPerMs
+	window := make([]float32, 0, windowPressureLimitSamples)
 	prevTranscribedPos := 0
 	prevWindowLen := 0
 	var prevAudioAt time.Time
@@ -121,14 +119,14 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 	for {
 		select {
-		case <-doneCh:
-			return
 		case <-ticker.C:
-			// empty the waiting pktPayloads
-			if err := readTrackPktPayloads(); err != nil {
+			// empty the waiting pktPayloadsCh
+			window, err = readTrackPktPayloads(window)
+			if err != nil {
 				// exit on close
 				return
 			}
+
 			// track how long we were waiting until consuming the next batch of audio data, as a measure
 			// of the pressure on the transcription process
 			newAudioLenMs := (len(window) - prevWindowLen) / trackOutAudioSamplesPerMs
@@ -189,7 +187,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloads 
 
 			// Prepare the vad segments and the audio for transcription.
 			segments := convertToSegmentSamples(vadSegments, len(window))
-			removeShortSpeeches(segments)
+			segments = removeShortSpeeches(segments)
 			cleaned := cleanAudio(window, segments)
 
 			// Before sending off data to be transcribed, check if new data is silence.
@@ -303,12 +301,13 @@ func convertToSegmentSamples(segments []speech.Segment, audioLen int) []segmentS
 
 // removeShortSpeeches removes small sections of speech because either they are not actual words,
 // or the transcriber will have trouble with such a short amount.
-func removeShortSpeeches(segments []segmentSamples) {
+func removeShortSpeeches(segments []segmentSamples) []segmentSamples {
 	for i, seg := range segments {
 		if !seg.Silence && (seg.End-seg.Start) < minSpeechLengthSamples {
 			segments[i].Silence = true
 		}
 	}
+	return segments
 }
 
 func cleanAudio(audio []float32, segments []segmentSamples) []float32 {

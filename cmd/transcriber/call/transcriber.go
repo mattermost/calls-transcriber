@@ -84,7 +84,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		return nil
 	})
 	t.client.On(client.RTCTrackEvent, t.handleTrack)
-	t.client.On(client.CloseEvent, func(msg any) error {
+	t.client.On(client.CloseEvent, func(_ any) error {
 		go t.done()
 		return nil
 	})

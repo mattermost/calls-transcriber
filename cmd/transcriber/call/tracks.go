@@ -121,13 +121,11 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 	var pktPayloadCh chan []byte
 	if t.cfg.LiveCaptionsOn {
 		pktPayloadCh = make(chan []byte, pktPayloadChBuffer)
-		doneChan := make(chan struct{})
 		defer func() {
 			close(pktPayloadCh)
-			close(doneChan)
 		}()
 
-		go t.processLiveCaptionsForTrack(ctx, pktPayloadCh, doneChan)
+		go t.processLiveCaptionsForTrack(ctx, pktPayloadCh)
 	}
 
 	// Read track audio:
