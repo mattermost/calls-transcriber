@@ -139,7 +139,8 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		slog.Debug("LiveCaptionsOn is true; startingTranscriberPool starting transcriber pool.",
 			slog.String("LiveCaptionsModelSize", string(t.cfg.LiveCaptionsModelSize)),
 			slog.Int("LiveCaptionsNumTranscribers", t.cfg.LiveCaptionsNumTranscribers),
-			slog.Int("LiveCaptionsNumThreadsPerTranscriber", t.cfg.LiveCaptionsNumThreadsPerTranscriber))
+			slog.Int("LiveCaptionsNumThreadsPerTranscriber", t.cfg.LiveCaptionsNumThreadsPerTranscriber),
+			slog.String("LiveCaptionsLanguage", t.cfg.LiveCaptionsLanguage))
 		go t.startTranscriberPool()
 	} else {
 		slog.Info("LiveCaptionsOn is false; not starting the transcriber pool")
