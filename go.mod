@@ -5,12 +5,12 @@ go 1.21.4
 require (
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.0.12
-	github.com/mattermost/rtcd v0.14.0-dev.0.20240314152404-efacb91f3c4f
+	github.com/mattermost/rtcd v0.14.0
 	github.com/pion/interceptor v0.1.25
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.8.3
 	github.com/pion/webrtc/v3 v3.2.21
-	github.com/streamer45/silero-vad-go v0.1.3-0.20240322202454-14710a0ddbf0
+	github.com/streamer45/silero-vad-go v0.1.3
 	github.com/stretchr/testify v1.8.4
 )
 
