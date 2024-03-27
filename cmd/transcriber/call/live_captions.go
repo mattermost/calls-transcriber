@@ -209,7 +209,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			retCh: transcribedCh,
 		}
 		select {
-		case t.transcriberQueueCh <- pkg:
+		case t.captionsPoolQueueCh <- pkg:
 			break
 		default:
 			if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
@@ -398,7 +398,7 @@ func cutWindowToSize(trackID string, window []float32, segments []segmentSamples
 
 func (t *Transcriber) startTranscriberPool() {
 	for i := 0; i < t.cfg.LiveCaptionsNumTranscribers; i++ {
-		t.transcriberWg.Add(1)
+		t.captionsPoolWg.Add(1)
 		go t.handleTranscriptionRequests(i)
 	}
 }
@@ -410,6 +410,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 	if err != nil {
 		slog.Error("live captions, handleTranscriptionRequests: failed to create transcriber",
 			slog.String("err", err.Error()))
+		t.captionsPoolWg.Done()
 		return
 	}
 	defer func() {
@@ -418,15 +419,15 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 			slog.Error("live captions, handleTranscriptionRequests: failed to destroy transcriber",
 				slog.String("err", err.Error()))
 		}
-		t.transcriberWg.Done()
+		t.captionsPoolWg.Done()
 	}()
 
 	for {
 		select {
-		case <-t.transcriberDoneCh:
+		case <-t.captionsPoolDoneCh:
 			slog.Debug(fmt.Sprintf("live captions, handleTranscriptionRequests: closing transcriber #%d", num))
 			return
-		case packet := <-t.transcriberQueueCh:
+		case packet := <-t.captionsPoolQueueCh:
 			transcribed, _, err := transcriber.Transcribe(packet.pcm)
 			if err != nil {
 				slog.Error("live captions, handleTranscriptionRequests: failed to transcribe audio samples",

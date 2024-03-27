@@ -244,7 +244,7 @@ func (t *Transcriber) handleClose() error {
 	t.liveTracksWg.Wait()
 	close(t.trackCtxs)
 
-	t.transcriberWg.Wait()
+	t.captionsPoolWg.Wait()
 
 	slog.Debug("live tracks processing done, starting post processing")
 	start := time.Now()

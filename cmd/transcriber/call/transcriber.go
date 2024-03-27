@@ -35,9 +35,9 @@ type Transcriber struct {
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
 
-	transcriberQueueCh chan captionPackage
-	transcriberWg      sync.WaitGroup
-	transcriberDoneCh  chan struct{}
+	captionsPoolQueueCh chan captionPackage
+	captionsPoolWg      sync.WaitGroup
+	captionsPoolDoneCh  chan struct{}
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
@@ -59,14 +59,14 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	apiClient.SetToken(cfg.AuthToken)
 
 	t := &Transcriber{
-		cfg:                cfg,
-		client:             client,
-		apiClient:          apiClient,
-		errCh:              make(chan error, 1),
-		doneCh:             make(chan struct{}),
-		trackCtxs:          make(chan trackContext, maxTracksContexes),
-		transcriberQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
-		transcriberDoneCh:  make(chan struct{}),
+		cfg:                 cfg,
+		client:              client,
+		apiClient:           apiClient,
+		errCh:               make(chan error, 1),
+		doneCh:              make(chan struct{}),
+		trackCtxs:           make(chan trackContext, maxTracksContexes),
+		captionsPoolQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
+		captionsPoolDoneCh:  make(chan struct{}),
 	}
 	return t, nil
 }
@@ -142,8 +142,6 @@ func (t *Transcriber) Start(ctx context.Context) error {
 			slog.Int("LiveCaptionsNumThreadsPerTranscriber", t.cfg.LiveCaptionsNumThreadsPerTranscriber),
 			slog.String("LiveCaptionsLanguage", t.cfg.LiveCaptionsLanguage))
 		go t.startTranscriberPool()
-	} else {
-		slog.Info("LiveCaptionsOn is false; not starting the transcriber pool")
 	}
 
 	select {
@@ -186,7 +184,7 @@ func (t *Transcriber) Err() error {
 
 func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
-		close(t.transcriberDoneCh)
+		close(t.captionsPoolDoneCh)
 		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})
