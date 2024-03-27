@@ -1,6 +1,7 @@
 package whisper
 
-// #cgo LDFLAGS: -l:libwhisper.a -lm -lstdc++
+// #cgo linux LDFLAGS: -l:libwhisper.a -lm -lstdc++
+// #cgo darwin LDFLAGS: -lwhisper -lstdc++ -framework Accelerate
 // #include <whisper.h>
 // #include <stdlib.h>
 import "C"
@@ -22,6 +23,15 @@ type Config struct {
 	NumThreads int
 	// Whether or not past transcription should be used as prompt.
 	NoContext bool
+	// 512 = a bit more than 10s. Use multiples of 64. Results in a speedup of 3x at 512, b/c whisper was tuned for 30s chunks. See: https://github.com/ggerganov/whisper.cpp/pull/141
+	// TODO: tests, validation
+	AudioContext int
+	// Whether or not to print progress to stdout (default false).
+	PrintProgress bool
+	// Language to use (defaults to autodetection).
+	Language string
+	// Whether or not to generate a single segment (default false).
+	SingleSegment bool
 }
 
 func (c Config) IsValid() error {
@@ -72,8 +82,14 @@ func NewContext(cfg Config) (*Context, error) {
 
 	c.params = C.whisper_full_default_params(C.WHISPER_SAMPLING_GREEDY)
 	c.params.no_context = C.bool(c.cfg.NoContext)
+	c.params.audio_ctx = C.int(c.cfg.AudioContext)
 	c.params.n_threads = C.int(c.cfg.NumThreads)
-	c.params.language = C.CString("auto")
+	if c.cfg.Language == "" {
+		c.cfg.Language = "auto"
+	}
+	c.params.language = C.CString(c.cfg.Language)
+	c.params.single_segment = C.bool(c.cfg.SingleSegment)
+	c.params.print_progress = C.bool(c.cfg.PrintProgress)
 
 	return &c, nil
 }

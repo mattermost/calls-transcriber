@@ -3,6 +3,7 @@ package call
 import (
 	"errors"
 	"fmt"
+	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"io"
 	"log/slog"
 	"math"
@@ -115,6 +116,19 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 	}
 	defer oggWriter.Close()
 
+	// Live captioning:
+	// pktPayloadCh is used to send the rtp audio data to the processLiveCaptionsForTrack goroutine
+	var pktPayloadCh chan []byte
+	if t.cfg.LiveCaptionsOn {
+		pktPayloadCh = make(chan []byte, pktPayloadChBuffer)
+		defer func() {
+			close(pktPayloadCh)
+		}()
+
+		go t.processLiveCaptionsForTrack(ctx, pktPayloadCh)
+	}
+
+	// Read track audio:
 	var prevArrivalTime time.Time
 	var prevRTPTimestamp uint32
 	for {
@@ -204,7 +218,23 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 				slog.String("err", err.Error()),
 				slog.String("trackID", ctx.trackID))
 		}
+
+		if t.cfg.LiveCaptionsOn {
+			select {
+			case pktPayloadCh <- pkt.Payload:
+			default:
+				if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
+					SessionID:  ctx.sessionID,
+					MetricName: public.MetricLiveCaptionsPktPayloadChBufFull,
+				}, false); err != nil {
+					slog.Error("processLiveTrack: error sending wsEvMetric MetricLiveCaptionsPktPayloadChBufFull",
+						slog.String("err", err.Error()),
+						slog.String("trackID", ctx.trackID))
+				}
+			}
+		}
 	}
+
 }
 
 // handleClose will kick off post-processing of saved voice tracks.
@@ -213,6 +243,8 @@ func (t *Transcriber) handleClose() error {
 
 	t.liveTracksWg.Wait()
 	close(t.trackCtxs)
+
+	t.captionsPoolWg.Wait()
 
 	slog.Debug("live tracks processing done, starting post processing")
 	start := time.Now()
@@ -472,8 +504,9 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
-			ModelFile:  filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
-			NumThreads: t.cfg.NumThreads,
+			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
+			NumThreads:    t.cfg.NumThreads,
+			PrintProgress: true,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

@@ -1,6 +1,7 @@
 package opus
 
-// #cgo LDFLAGS: -l:libopus.a -lm
+// #cgo linux LDFLAGS: -l:libopus.a -lm
+// #cgo darwin LDFLAGS: -lopus
 // #include <opus.h>
 import "C"
 

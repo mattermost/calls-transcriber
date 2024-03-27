@@ -16,9 +16,14 @@ var idRE = regexp.MustCompile(`^[a-z0-9]{26}$`)
 
 const (
 	// defaults
-	ModelSizeDefault     = ModelSizeBase
-	TranscribeAPIDefault = TranscribeAPIWhisperCPP
-	OutputFormatDefault  = OutputFormatVTT
+	ModelSizeDefault                            = ModelSizeBase
+	NumThreadsDefault                           = 2
+	TranscribeAPIDefault                        = TranscribeAPIWhisperCPP
+	OutputFormatDefault                         = OutputFormatVTT
+	LiveCaptionsModelSizeDefault                = ModelSizeTiny
+	LiveCaptionsNumTranscribersDefault          = 1
+	LiveCaptionsNumThreadsPerTranscriberDefault = 2
+	LiveCaptionsLanguageDefault                 = "en"
 )
 
 type OutputFormat string
@@ -63,6 +68,13 @@ type CallTranscriberConfig struct {
 	ModelSize     ModelSize
 	OutputFormat  OutputFormat
 	OutputOptions OutputOptions
+
+	// live captions config
+	LiveCaptionsOn                       bool
+	LiveCaptionsModelSize                ModelSize
+	LiveCaptionsNumTranscribers          int
+	LiveCaptionsNumThreadsPerTranscriber int
+	LiveCaptionsLanguage                 string
 }
 
 func (p ModelSize) IsValid() bool {
@@ -133,8 +145,24 @@ func (cfg CallTranscriberConfig) IsValid() error {
 	if cfg.OutputFormat != OutputFormatVTT {
 		return fmt.Errorf("OutputFormat value is not valid")
 	}
-	if numCPU := runtime.NumCPU(); cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
+
+	numCPU := runtime.NumCPU()
+	if cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
 		return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
+	}
+	if cfg.LiveCaptionsOn {
+		if cfg.LiveCaptionsNumTranscribers < 1 || cfg.LiveCaptionsNumThreadsPerTranscriber < 1 ||
+			cfg.LiveCaptionsNumTranscribers*cfg.LiveCaptionsNumThreadsPerTranscriber > numCPU {
+			return fmt.Errorf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", numCPU)
+		}
+
+		if !cfg.LiveCaptionsModelSize.IsValid() {
+			return fmt.Errorf("LiveCaptionsModelSize value is not valid")
+		}
+
+		if cfg.LiveCaptionsLanguage == "" {
+			return fmt.Errorf("LiveCaptionsLanguage cannot be empty")
+		}
 	}
 
 	if err := cfg.OutputOptions.Text.IsValid(); err != nil {
@@ -158,7 +186,11 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 	}
 
 	if cfg.NumThreads == 0 {
-		cfg.NumThreads = max(1, runtime.NumCPU()/2)
+		if cfg.LiveCaptionsOn {
+			cfg.NumThreads = min(NumThreadsDefault, runtime.NumCPU()/2)
+		} else {
+			cfg.NumThreads = max(1, runtime.NumCPU()/2)
+		}
 	}
 
 	if cfg.OutputOptions.WebVTT.IsEmpty() {
@@ -167,6 +199,19 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 
 	if cfg.OutputOptions.Text.IsEmpty() {
 		cfg.OutputOptions.Text.SetDefaults()
+	}
+
+	if cfg.LiveCaptionsModelSize == "" {
+		cfg.LiveCaptionsModelSize = LiveCaptionsModelSizeDefault
+	}
+	if cfg.LiveCaptionsNumTranscribers == 0 {
+		cfg.LiveCaptionsNumTranscribers = LiveCaptionsNumTranscribersDefault
+	}
+	if cfg.LiveCaptionsNumThreadsPerTranscriber == 0 {
+		cfg.LiveCaptionsNumThreadsPerTranscriber = LiveCaptionsNumThreadsPerTranscriberDefault
+	}
+	if cfg.LiveCaptionsLanguage == "" {
+		cfg.LiveCaptionsLanguage = LiveCaptionsLanguageDefault
 	}
 }
 
@@ -185,6 +230,11 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("MODEL_SIZE=%s", cfg.ModelSize),
 		fmt.Sprintf("OUTPUT_FORMAT=%s", cfg.OutputFormat),
 		fmt.Sprintf("NUM_THREADS=%d", cfg.NumThreads),
+		fmt.Sprintf("LIVE_CAPTIONS_ON=%t", cfg.LiveCaptionsOn),
+		fmt.Sprintf("LIVE_CAPTIONS_MODEL_SIZE=%s", cfg.LiveCaptionsModelSize),
+		fmt.Sprintf("LIVE_CAPTIONS_NUM_TRANSCRIBERS=%d", cfg.LiveCaptionsNumTranscribers),
+		fmt.Sprintf("LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER=%d", cfg.LiveCaptionsNumThreadsPerTranscriber),
+		fmt.Sprintf("LIVE_CAPTIONS_LANGUAGE=%s", cfg.LiveCaptionsLanguage),
 	}
 
 	vars = append(vars, cfg.OutputOptions.WebVTT.ToEnv()...)
@@ -199,15 +249,20 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 	}
 
 	m := map[string]any{
-		"site_url":         cfg.SiteURL,
-		"call_id":          cfg.CallID,
-		"post_id":          cfg.PostID,
-		"auth_token":       cfg.AuthToken,
-		"transcription_id": cfg.TranscriptionID,
-		"transcribe_api":   cfg.TranscribeAPI,
-		"model_size":       cfg.ModelSize,
-		"output_format":    cfg.OutputFormat,
-		"num_threads":      cfg.NumThreads,
+		"site_url":                       cfg.SiteURL,
+		"call_id":                        cfg.CallID,
+		"post_id":                        cfg.PostID,
+		"auth_token":                     cfg.AuthToken,
+		"transcription_id":               cfg.TranscriptionID,
+		"transcribe_api":                 cfg.TranscribeAPI,
+		"model_size":                     cfg.ModelSize,
+		"output_format":                  cfg.OutputFormat,
+		"num_threads":                    cfg.NumThreads,
+		"live_captions_on":               cfg.LiveCaptionsOn,
+		"live_captions_model_size":       cfg.LiveCaptionsModelSize,
+		"live_captions_num_transcribers": cfg.LiveCaptionsNumTranscribers,
+		"live_captions_language":         cfg.LiveCaptionsLanguage,
+		"live_captions_num_threads_per_transcriber": cfg.LiveCaptionsNumThreadsPerTranscriber,
 	}
 
 	for k, v := range cfg.OutputOptions.WebVTT.ToMap() {
@@ -227,13 +282,37 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	cfg.AuthToken, _ = m["auth_token"].(string)
 	cfg.TranscriptionID, _ = m["transcription_id"].(string)
 
-	// num_threads can either be int or float64 dependning whether it's been
+	// num_threads can either be int or float64 depending whether it's been
 	// previously marshaled or not.
 	switch m["num_threads"].(type) {
 	case int:
 		cfg.NumThreads = m["num_threads"].(int)
 	case float64:
 		cfg.NumThreads = int(m["num_threads"].(float64))
+	}
+
+	// likewise for live_captions_num_transcribers and live_captions_num_threads_per_transcriber
+	switch m["live_captions_num_transcribers"].(type) {
+	case int:
+		cfg.LiveCaptionsNumTranscribers = m["live_captions_num_transcribers"].(int)
+	case float64:
+		cfg.LiveCaptionsNumTranscribers = int(m["live_captions_num_transcribers"].(float64))
+	}
+	switch m["live_captions_num_threads_per_transcriber"].(type) {
+	case int:
+		cfg.LiveCaptionsNumThreadsPerTranscriber = m["live_captions_num_threads_per_transcriber"].(int)
+	case float64:
+		cfg.LiveCaptionsNumThreadsPerTranscriber = int(m["live_captions_num_threads_per_transcriber"].(float64))
+	}
+
+	cfg.LiveCaptionsOn, _ = m["live_captions_on"].(bool)
+	if liveCaptionsModelSize, ok := m["live_captions_model_size"].(string); ok {
+		cfg.LiveCaptionsModelSize = ModelSize(liveCaptionsModelSize)
+	} else {
+		cfg.LiveCaptionsModelSize, _ = m["live_captions_model_size"].(ModelSize)
+	}
+	if language, ok := m["live_captions_language"].(string); ok {
+		cfg.LiveCaptionsLanguage = language
 	}
 
 	if api, ok := m["transcribe_api"].(string); ok {
@@ -266,6 +345,10 @@ func FromEnv() (CallTranscriberConfig, error) {
 	cfg.AuthToken = os.Getenv("AUTH_TOKEN")
 	cfg.TranscriptionID = os.Getenv("TRANSCRIPTION_ID")
 	cfg.NumThreads, _ = strconv.Atoi(os.Getenv("NUM_THREADS"))
+	cfg.LiveCaptionsOn, _ = strconv.ParseBool(os.Getenv("LIVE_CAPTIONS_ON"))
+	cfg.LiveCaptionsNumTranscribers, _ = strconv.Atoi(os.Getenv("LIVE_CAPTIONS_NUM_TRANSCRIBERS"))
+	cfg.LiveCaptionsNumThreadsPerTranscriber, _ = strconv.Atoi(os.Getenv("LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER"))
+	cfg.LiveCaptionsLanguage = os.Getenv("LIVE_CAPTIONS_LANGUAGE")
 
 	if val := os.Getenv("TRANSCRIBE_API"); val != "" {
 		cfg.TranscribeAPI = TranscribeAPI(val)
@@ -273,6 +356,10 @@ func FromEnv() (CallTranscriberConfig, error) {
 
 	if val := os.Getenv("MODEL_SIZE"); val != "" {
 		cfg.ModelSize = ModelSize(val)
+	}
+
+	if val := os.Getenv("LIVE_CAPTIONS_MODEL_SIZE"); val != "" {
+		cfg.LiveCaptionsModelSize = ModelSize(val)
 	}
 
 	if val := os.Getenv("OUTPUT_FORMAT"); val != "" {

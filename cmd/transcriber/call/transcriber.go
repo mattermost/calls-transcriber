@@ -16,6 +16,9 @@ import (
 
 const (
 	pluginID          = "com.mattermost.calls"
+	wsEvPrefix        = "custom_" + pluginID + "_"
+	wsEvCaption       = "custom_" + pluginID + "_caption"
+	wsEvMetric        = "custom_" + pluginID + "_metric"
 	maxTracksContexes = 256
 )
 
@@ -31,6 +34,10 @@ type Transcriber struct {
 	liveTracksWg sync.WaitGroup
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
+
+	captionsPoolQueueCh chan captionPackage
+	captionsPoolWg      sync.WaitGroup
+	captionsPoolDoneCh  chan struct{}
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
@@ -51,14 +58,17 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	apiClient := model.NewAPIv4Client(cfg.SiteURL)
 	apiClient.SetToken(cfg.AuthToken)
 
-	return &Transcriber{
-		cfg:       cfg,
-		client:    client,
-		apiClient: apiClient,
-		errCh:     make(chan error, 1),
-		doneCh:    make(chan struct{}),
-		trackCtxs: make(chan trackContext, maxTracksContexes),
-	}, nil
+	t := &Transcriber{
+		cfg:                 cfg,
+		client:              client,
+		apiClient:           apiClient,
+		errCh:               make(chan error, 1),
+		doneCh:              make(chan struct{}),
+		trackCtxs:           make(chan trackContext, maxTracksContexes),
+		captionsPoolQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
+		captionsPoolDoneCh:  make(chan struct{}),
+	}
+	return t, nil
 }
 
 func (t *Transcriber) Start(ctx context.Context) error {
@@ -83,7 +93,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	startedCh := make(chan struct{})
 	t.client.On(client.WSCallRecordingState, func(ctx any) error {
 		if recState, ok := ctx.(client.CallJobState); ok && recState.StartAt > 0 {
-			slog.Debug("received call recording state", slog.Any("recState", recState))
+			slog.Debug("received call recording state", slog.Any("jobState", recState))
 
 			// Note: recState.StartAt is the absolute timestamp of when the recording
 			//       started to process but could come from a different instance and
@@ -123,6 +133,15 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	case <-connectedCh:
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+
+	if t.cfg.LiveCaptionsOn {
+		slog.Debug("LiveCaptionsOn is true; startingTranscriberPool starting transcriber pool.",
+			slog.String("LiveCaptionsModelSize", string(t.cfg.LiveCaptionsModelSize)),
+			slog.Int("LiveCaptionsNumTranscribers", t.cfg.LiveCaptionsNumTranscribers),
+			slog.Int("LiveCaptionsNumThreadsPerTranscriber", t.cfg.LiveCaptionsNumThreadsPerTranscriber),
+			slog.String("LiveCaptionsLanguage", t.cfg.LiveCaptionsLanguage))
+		go t.startTranscriberPool()
 	}
 
 	select {
@@ -165,6 +184,7 @@ func (t *Transcriber) Err() error {
 
 func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
+		close(t.captionsPoolDoneCh)
 		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})
