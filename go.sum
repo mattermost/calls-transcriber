@@ -95,10 +95,6 @@ github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-2024030819125
 github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df/go.mod h1:9a5FoYxu9rPCvV4FEo0DkJSqqCZ80FCeB9Y4haBI2FQ=
 github.com/mattermost/mattermost/server/public v0.0.12 h1:iunc9q4/XkArOrndEUn73uFw6v9TOEXEtp6Nm6Iv218=
 github.com/mattermost/mattermost/server/public v0.0.12/go.mod h1:Bk+atJcELCIk9Yeq5FoqTr+gra9704+X4amrlwlTgSc=
-github.com/mattermost/rtcd v0.14.0-dev.0.20240313220129-b3dce1d9f33a h1:t7ShdpZZ8H/w6PP7TtmIghv5Bs0/z9Xo5j+X7zUQH38=
-github.com/mattermost/rtcd v0.14.0-dev.0.20240313220129-b3dce1d9f33a/go.mod h1:NlhvJgNFjAyPm/1qRwdfn4D6NWaykwJG7QNd313i2us=
-github.com/mattermost/rtcd v0.14.0-dev.0.20240314152404-efacb91f3c4f h1:JsqZtiIKMdtUAqTeVKLop5T5HQO/oMXWbkA+X5gvaYs=
-github.com/mattermost/rtcd v0.14.0-dev.0.20240314152404-efacb91f3c4f/go.mod h1:NlhvJgNFjAyPm/1qRwdfn4D6NWaykwJG7QNd313i2us=
 github.com/mattermost/rtcd v0.14.0 h1:q3XfS1RDcMRjQqfBjBfaE2e16QkXT1SnCj68wB9ct6Y=
 github.com/mattermost/rtcd v0.14.0/go.mod h1:NlhvJgNFjAyPm/1qRwdfn4D6NWaykwJG7QNd313i2us=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
@@ -210,16 +206,6 @@ github.com/shurcooL/users v0.0.0-20180125191416-49c67e49c537/go.mod h1:QJTqeLYED
 github.com/shurcooL/webdavfs v0.0.0-20170829043945-18c3829fa133/go.mod h1:hKmq5kWdCj2z2KEozexVbfEZIWiTjhE0+UjmZgPqehw=
 github.com/sourcegraph/annotate v0.0.0-20160123013949-f4cad6c6324d/go.mod h1:UdhH50NIW0fCiwBSr0co2m7BnFLdv4fQTgdqdJTHFeE=
 github.com/sourcegraph/syntaxhighlight v0.0.0-20170531221838-bd320f5d308e/go.mod h1:HuIsMU8RRBOtsCgI77wP899iHVBQpCmg4ErYMZB+2IA=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240126140637-8c3aae65139a h1:MyuvQtOy/TYMWiDWP51eYxo/lfeoHi/dblLc/bL18tc=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240126140637-8c3aae65139a/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240126142300-dcb0e3f2686a h1:woG/I+zvTby3gINRuO1Ecl5J+Ko+v3s9zjRuE0L5uho=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240126142300-dcb0e3f2686a/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240315212856-bb94974c19ca h1:/DwjhI7B2TKSLN9SRq09K0CS658gkWRcKYEaYpaVUnw=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240315212856-bb94974c19ca/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240319124904-3e7e59fa58bf h1:noStsY9vK/SmF09B+1vgOc9s7pjXsd9iCgWvS44rq9Y=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240319124904-3e7e59fa58bf/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240322202454-14710a0ddbf0 h1:hkjS44sC6b5Ho88N9cB0RN8zFYWdI55r4nPE2b3iCw0=
-github.com/streamer45/silero-vad-go v0.1.3-0.20240322202454-14710a0ddbf0/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
 github.com/streamer45/silero-vad-go v0.1.3 h1:gz5mLanOOFg1K5eXTlOI7VVINONZxra5I+g2n7L6fGU=
 github.com/streamer45/silero-vad-go v0.1.3/go.mod h1:B+2FXs/5fZ6pzl6unUZYhZqkYdOB+3saBVzjOzdZnUs=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

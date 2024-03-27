@@ -223,7 +223,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user
 			select {
 			case pktPayloadCh <- pkt.Payload:
 			default:
-				if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+				if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
 					SessionID:  ctx.sessionID,
 					MetricName: public.MetricLiveCaptionsPktPayloadChBufFull,
 				}, false); err != nil {

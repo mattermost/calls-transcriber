@@ -154,7 +154,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			window = window[:0]
 			prevWindowLen = 0
 			prevTranscribedPos = 0
-			if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+			if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
 				SessionID:  ctx.sessionID,
 				MetricName: public.MetricLiveCaptionsWindowDropped,
 			}, false); err != nil {
@@ -212,7 +212,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		case t.captionsPoolQueueCh <- pkg:
 			break
 		default:
-			if err := t.client.SendWs(wsEvMetric, public.MetricMsg{
+			if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
 				SessionID:  ctx.sessionID,
 				MetricName: public.MetricLiveCaptionsTranscriberBufFull,
 			}, false); err != nil {
@@ -242,7 +242,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 					break
 				}
-				if err := t.client.SendWs(wsEvCaption, public.CaptionMsg{
+				if err := t.client.SendWS(wsEvCaption, public.CaptionMsg{
 					SessionID:     ctx.sessionID,
 					UserID:        ctx.user.Id,
 					Text:          text,
