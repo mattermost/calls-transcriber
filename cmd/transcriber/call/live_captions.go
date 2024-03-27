@@ -228,19 +228,19 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		prevWindowLen = len(window)
 
 		// Use a for loop and a select so that we can drop ticks waiting for the transcriber.
-	waitForTranscription:
 		for {
 			select {
 			case <-ticker.C:
 				slog.Debug("processLiveCaptionsForTrack: dropped a tick waiting for the transcriber",
 					slog.String("trackID", ctx.trackID))
+				continue
 			case text := <-transcribedCh:
 				if len(text) == 0 {
 					// Either transcribedCh was closed above (captionQueueCh full), or audio transcription failed.
 					// Note: this appears to happen when the transcriber fails to decode a block of audio.
 					// Usually the probability returned for the language is very low, which makes sense.
 					slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
-					break waitForTranscription
+					break
 				}
 				if err := t.client.SendWs(wsEvCaption, public.CaptionMsg{
 					SessionID:     ctx.sessionID,
@@ -252,9 +252,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
-
-				break waitForTranscription
 			}
+
+			// We've processed text, so we're finished.
+			break
 		}
 	}
 }
