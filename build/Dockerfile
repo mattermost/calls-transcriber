@@ -10,6 +10,7 @@ WORKDIR /workdir
 # Install TLS certificates
 # hadolint ignore=DL3008
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install --no-install-recommends -y ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
