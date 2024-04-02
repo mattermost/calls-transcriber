@@ -1,8 +1,8 @@
 # This dockerfile is used to build Mattermost calls-transcriber
 # A multi stage build, with golang used as a builder
-# and debian:bookworm-slim as runner
+# and debian:sid-slim as runner
 ARG GO_VERSION
-FROM --platform=$TARGETPLATFORM debian:bookworm-20240211-slim as base
+FROM --platform=$TARGETPLATFORM debian:sid-20240330-slim as base
 
 # Setup system dependencies
 WORKDIR /workdir
