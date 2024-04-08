@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/azure"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/whisper.cpp"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/ogg"
@@ -507,6 +508,11 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.ModelSize))),
 			NumThreads:    t.cfg.NumThreads,
 			PrintProgress: true,
+		})
+	case config.TranscribeAPIAzure:
+		return azure.NewSpeechRecognizer(azure.SpeechRecognizerConfig{
+			SpeechKey:    t.cfg.TranscribeAPIOptions["SPEECH_KEY"].(string),
+			SpeechRegion: t.cfg.TranscribeAPIOptions["SPEECH_REGION"].(string),
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

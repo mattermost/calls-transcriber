@@ -3,6 +3,7 @@ module github.com/mattermost/calls-transcriber
 go 1.21.4
 
 require (
+	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.0.12
 	github.com/mattermost/rtcd v0.14.0
