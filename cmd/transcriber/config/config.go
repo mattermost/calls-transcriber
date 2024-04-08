@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"regexp"
@@ -50,6 +52,7 @@ type TranscribeAPI string
 const (
 	TranscribeAPIWhisperCPP    = "whisper.cpp"
 	TranscribeAPIOpenAIWhisper = "openai/whisper"
+	TranscribeAPIAzure         = "azure"
 )
 
 type OutputOptions struct {
@@ -67,10 +70,11 @@ type CallTranscriberConfig struct {
 	NumThreads      int
 
 	// output config
-	TranscribeAPI TranscribeAPI
-	ModelSize     ModelSize
-	OutputFormat  OutputFormat
-	OutputOptions OutputOptions
+	TranscribeAPI        TranscribeAPI
+	TranscribeAPIOptions map[string]any
+	ModelSize            ModelSize
+	OutputFormat         OutputFormat
+	OutputOptions        OutputOptions
 
 	// live captions config
 	LiveCaptionsOn                       bool
@@ -91,7 +95,7 @@ func (p ModelSize) IsValid() bool {
 
 func (a TranscribeAPI) IsValid() bool {
 	switch a {
-	case TranscribeAPIWhisperCPP, TranscribeAPIOpenAIWhisper:
+	case TranscribeAPIWhisperCPP, TranscribeAPIOpenAIWhisper, TranscribeAPIAzure:
 		return true
 	default:
 		return false
@@ -233,10 +237,6 @@ func (cfg *CallTranscriberConfig) SetDefaults() {
 }
 
 func (cfg CallTranscriberConfig) ToEnv() []string {
-	if cfg == (CallTranscriberConfig{}) {
-		return nil
-	}
-
 	vars := []string{
 		fmt.Sprintf("SITE_URL=%s", cfg.SiteURL),
 		fmt.Sprintf("CALL_ID=%s", cfg.CallID),
@@ -254,6 +254,15 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("LIVE_CAPTIONS_LANGUAGE=%s", cfg.LiveCaptionsLanguage),
 	}
 
+	if cfg.TranscribeAPIOptions != nil {
+		data, err := json.Marshal(cfg.TranscribeAPIOptions)
+		if err != nil {
+			vars = append(vars, fmt.Sprintf("TRANSCRIBE_API_OPTIONS='%s'", string(data)))
+		} else {
+			slog.Error("failed to marshal TranscribeAPIOptions", slog.String("err", err.Error()))
+		}
+	}
+
 	vars = append(vars, cfg.OutputOptions.WebVTT.ToEnv()...)
 	vars = append(vars, cfg.OutputOptions.Text.ToEnv()...)
 
@@ -261,10 +270,6 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 }
 
 func (cfg CallTranscriberConfig) ToMap() map[string]any {
-	if cfg == (CallTranscriberConfig{}) {
-		return nil
-	}
-
 	m := map[string]any{
 		"site_url":                       cfg.SiteURL,
 		"call_id":                        cfg.CallID,
@@ -272,6 +277,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		"auth_token":                     cfg.AuthToken,
 		"transcription_id":               cfg.TranscriptionID,
 		"transcribe_api":                 cfg.TranscribeAPI,
+		"transcribe_api_options":         cfg.TranscribeAPIOptions,
 		"model_size":                     cfg.ModelSize,
 		"output_format":                  cfg.OutputFormat,
 		"num_threads":                    cfg.NumThreads,
@@ -337,6 +343,11 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 	} else {
 		cfg.TranscribeAPI, _ = m["transcribe_api"].(TranscribeAPI)
 	}
+
+	if opts, ok := m["transcribe_api_options"].(map[string]any); ok {
+		cfg.TranscribeAPIOptions = opts
+	}
+
 	if modelSize, ok := m["model_size"].(string); ok {
 		cfg.ModelSize = ModelSize(modelSize)
 	} else {
@@ -381,6 +392,12 @@ func FromEnv() (CallTranscriberConfig, error) {
 
 	if val := os.Getenv("OUTPUT_FORMAT"); val != "" {
 		cfg.OutputFormat = OutputFormat(val)
+	}
+
+	if val := os.Getenv("TRANSCRIBE_API_OPTIONS"); val != "" {
+		if err := json.Unmarshal([]byte(val), &cfg.TranscribeAPIOptions); err != nil {
+			return cfg, fmt.Errorf("failed to unmarshal TranscribeAPIOptions: %w", err)
+		}
 	}
 
 	cfg.OutputOptions.WebVTT.FromEnv()
