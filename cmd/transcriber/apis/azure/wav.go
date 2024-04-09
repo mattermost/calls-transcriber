@@ -37,7 +37,7 @@ func f32PCMToWAV(samples []float32) []byte {
 	wav[39] = 'a'
 	binary.LittleEndian.PutUint32(wav[40:], uint32(len(samples)*2))
 
-	// Convert from float32 to uint16 PCM data
+	// Convert audio samples from float32 samples to uint16 PCM
 	for i, s := range samples {
 		binary.LittleEndian.PutUint16(pcm[i*2:], uint16(s*32768.0))
 	}

@@ -22,7 +22,7 @@ func TestConfigIsValid(t *testing.T) {
 		{
 			name:          "empty config",
 			cfg:           CallTranscriberConfig{},
-			expectedError: "config cannot be empty",
+			expectedError: "SiteURL cannot be empty",
 		},
 		{
 			name: "invalid SiteURL schema",
