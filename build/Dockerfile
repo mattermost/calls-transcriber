@@ -2,7 +2,7 @@
 # A multi stage build, with golang used as a builder
 # and debian:sid-slim as runner
 ARG GO_VERSION
-FROM --platform=$TARGETPLATFORM debian:sid-20240330-slim as base
+FROM --platform=$TARGETPLATFORM debian:bullseye-20240311-slim as base
 
 # Setup system dependencies
 WORKDIR /workdir
@@ -18,7 +18,7 @@ RUN apt-get update && \
 RUN groupadd -r calls && useradd -mr -g calls calls
 
 ARG GO_VERSION
-FROM --platform=$TARGETPLATFORM golang:${GO_VERSION} as builder
+FROM --platform=$TARGETPLATFORM golang:${GO_VERSION}-bullseye as builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG GO_BUILD_PLATFORMS=${TARGETOS}-${TARGETARCH}

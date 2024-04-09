@@ -266,6 +266,11 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 }
 
 func (cfg CallTranscriberConfig) ToMap() map[string]any {
+	apiOptsJSON, err := json.Marshal(cfg.TranscribeAPIOptions)
+	if err != nil {
+		slog.Error("failed to marshal TranscribeAPIOptions", slog.String("err", err.Error()))
+	}
+
 	m := map[string]any{
 		"site_url":                       cfg.SiteURL,
 		"call_id":                        cfg.CallID,
@@ -273,7 +278,7 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		"auth_token":                     cfg.AuthToken,
 		"transcription_id":               cfg.TranscriptionID,
 		"transcribe_api":                 cfg.TranscribeAPI,
-		"transcribe_api_options":         cfg.TranscribeAPIOptions,
+		"transcribe_api_options":         string(apiOptsJSON),
 		"model_size":                     cfg.ModelSize,
 		"output_format":                  cfg.OutputFormat,
 		"num_threads":                    cfg.NumThreads,
@@ -340,8 +345,10 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 		cfg.TranscribeAPI, _ = m["transcribe_api"].(TranscribeAPI)
 	}
 
-	if opts, ok := m["transcribe_api_options"].(map[string]any); ok {
-		cfg.TranscribeAPIOptions = opts
+	if opts, ok := m["transcribe_api_options"].(string); ok {
+		if err := json.Unmarshal([]byte(opts), &cfg.TranscribeAPIOptions); err != nil {
+			slog.Error("failed to marshal TranscribeAPIOptions", slog.String("err", err.Error()))
+		}
 	}
 
 	if modelSize, ok := m["model_size"].(string); ok {
