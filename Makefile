@@ -53,6 +53,9 @@ OPUS_VERSION ?= "1.4"
 OPUS_SHA ?= "c9b32b4253be5ae63d1ff16eea06b94b5f0f2951b7a02aceef58e3a3ce49c51f"
 # ONNX Runtime
 ONNX_VERSION ?= "1.16.2"
+# Azure Speech SDK
+AZURE_SDK_VERSION ?= "1.36.0"
+AZURE_SDK_SHA ?= "9e869d95bef1c2966f4a7eb6ae07d062d19b2a671435af7f7dadca85e80ee812"
 
 ## Docker Variables
 # Docker executable
@@ -200,6 +203,8 @@ endif
 	--build-arg WHISPER_MODELS=${WHISPER_MODELS} \
 	--build-arg ONNX_VERSION=${ONNX_VERSION} \
 	--build-arg IS_M1=${IS_M1} \
+	--build-arg AZURE_SDK_VERSION=${AZURE_SDK_VERSION} \
+	--build-arg AZURE_SDK_SHA=${AZURE_SDK_SHA} \
 	-f ${DOCKER_FILE} . \
 	-t ${DOCKER_TAG} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION} for ${DOCKER_BUILD_PLATFORMS}
@@ -216,6 +221,8 @@ ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
 	--build-arg WHISPER_SHA=${WHISPER_SHA} \
 	--build-arg WHISPER_MODELS=${WHISPER_MODELS} \
 	--build-arg ONNX_VERSION=${ONNX_VERSION} \
+	--build-arg AZURE_SDK_VERSION=${AZURE_SDK_VERSION} \
+	--build-arg AZURE_SDK_SHA=${AZURE_SDK_SHA} \
 	-f ${DOCKER_FILE} . \
 	-t ${DOCKER_REGISTRY}/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
 endif
@@ -350,7 +357,7 @@ go-test: ## to run tests
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" "${ONNX_VERSION}" "${ARCH}" || ${FAIL}
+	/bin/sh ./build/run_tests.sh "${GO_TEST_OPTS}" "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" "${ONNX_VERSION}" "${ARCH}" "${AZURE_SDK_VERSION}" "${AZURE_SDK_SHA}" || ${FAIL}
 	@$(OK) testing
 
 .PHONY: go-mod-check
@@ -377,7 +384,7 @@ go-lint: ## to lint go code
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
 	${DOCKER_IMAGE_GOLINT} \
-	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" "${ONNX_VERSION}" "${ARCH}" || ${FAIL}
+	/bin/sh ./build/lint.sh "${OPUS_VERSION}" "${OPUS_SHA}" "${WHISPER_VERSION}" "${WHISPER_SHA}" "${ONNX_VERSION}" "${ARCH}" "${AZURE_SDK_VERSION}" "${AZURE_SDK_SHA}" || ${FAIL}
 	@$(OK) App linting
 
 .PHONY: go-fmt
