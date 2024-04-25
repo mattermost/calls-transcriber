@@ -95,7 +95,9 @@ func (a TranscribeAPI) IsValid() bool {
 	}
 }
 
-func (cfg CallTranscriberConfig) IsValid() error {
+// IsValid checks the config's validity. Set inContainer to true only if this is being called
+// from the job container itself.
+func (cfg CallTranscriberConfig) IsValid(inContainer bool) error {
 	if cfg == (CallTranscriberConfig{}) {
 		return fmt.Errorf("config cannot be empty")
 	}
@@ -146,16 +148,21 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("OutputFormat value is not valid")
 	}
 
-	numCPU := runtime.NumCPU()
-	if cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
-		return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
-	}
-	if cfg.LiveCaptionsOn {
-		if cfg.LiveCaptionsNumTranscribers < 1 || cfg.LiveCaptionsNumThreadsPerTranscriber < 1 ||
-			cfg.LiveCaptionsNumTranscribers*cfg.LiveCaptionsNumThreadsPerTranscriber > numCPU {
-			return fmt.Errorf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", numCPU)
+	if inContainer {
+		numCPU := runtime.NumCPU()
+		if cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
+			return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
 		}
 
+		if cfg.LiveCaptionsOn {
+			if cfg.LiveCaptionsNumTranscribers < 1 || cfg.LiveCaptionsNumThreadsPerTranscriber < 1 ||
+				cfg.LiveCaptionsNumTranscribers*cfg.LiveCaptionsNumThreadsPerTranscriber > numCPU {
+				return fmt.Errorf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", numCPU)
+			}
+		}
+	}
+
+	if cfg.LiveCaptionsOn {
 		if !cfg.LiveCaptionsModelSize.IsValid() {
 			return fmt.Errorf("LiveCaptionsModelSize value is not valid")
 		}

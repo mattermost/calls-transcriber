@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,7 +42,13 @@ type Transcriber struct {
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
-	if err := cfg.IsValid(); err != nil {
+	if err := cfg.IsValid(true); err != nil {
+		if apiClient, err2 := CreateApiClient(cfg); err2 == nil {
+			t := &Transcriber{cfg: cfg, apiClient: apiClient}
+			if err3 := t.ReportJobFailure(fmt.Sprintf("failed to validate config: %s", err.Error())); err3 != nil {
+				slog.Error("failed to report job failure", slog.String("err", err3.Error()))
+			}
+		}
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
 
@@ -55,8 +62,8 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 		return nil, fmt.Errorf("failed to create calls client: %w", err)
 	}
 
-	apiClient := model.NewAPIv4Client(cfg.SiteURL)
-	apiClient.SetToken(cfg.AuthToken)
+	// We have already validated the cfg above, so no error.
+	apiClient, _ := CreateApiClient(cfg)
 
 	t := &Transcriber{
 		cfg:                 cfg,
@@ -69,6 +76,29 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 		captionsPoolDoneCh:  make(chan struct{}),
 	}
 	return t, nil
+}
+
+func CreateApiClient(cfg config.CallTranscriberConfig) (*model.Client4, error) {
+	if err := cfg.IsValid(true); err != nil {
+		if cfg.SiteURL == "" {
+			return nil, fmt.Errorf("SiteURL cannot be empty")
+		}
+
+		u, err := url.Parse(cfg.SiteURL)
+		if err != nil {
+			return nil, fmt.Errorf("SiteURL parsing failed: %w", err)
+		} else if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("SiteURL parsing failed: invalid scheme %q", u.Scheme)
+		} else if u.Path != "" {
+			return nil, fmt.Errorf("SiteURL parsing failed: invalid path %q", u.Path)
+		}
+
+		// We have a good enough config to make the ApiClient
+	}
+
+	apiClient := model.NewAPIv4Client(cfg.SiteURL)
+	apiClient.SetToken(cfg.AuthToken)
+	return apiClient, nil
 }
 
 func (t *Transcriber) Start(ctx context.Context) error {

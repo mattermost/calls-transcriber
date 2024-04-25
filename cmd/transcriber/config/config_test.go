@@ -16,6 +16,7 @@ func TestConfigIsValid(t *testing.T) {
 	tcs := []struct {
 		name          string
 		cfg           CallTranscriberConfig
+		inContainer   bool
 		expectedError string
 	}{
 		{
@@ -114,7 +115,23 @@ func TestConfigIsValid(t *testing.T) {
 				ModelSize:       ModelSizeMedium,
 				OutputFormat:    OutputFormatVTT,
 			},
+			inContainer:   true,
 			expectedError: fmt.Sprintf("NumThreads should be in the range [1, %d]", runtime.NumCPU()),
+		},
+		{
+			name: "valid NumThreads if not in container",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
+			},
+			inContainer:   false,
+			expectedError: "SilenceThresholdMs should be a positive number",
 		},
 		{
 			name: "invalid SilenceThresholdMs",
@@ -184,7 +201,57 @@ func TestConfigIsValid(t *testing.T) {
 					},
 				},
 			},
+			inContainer:   true,
 			expectedError: fmt.Sprintf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", runtime.NumCPU()),
+		},
+		{
+			name: "valid LiveCaptionsNumTranscribers if not in a container",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
+				NumThreads:      1,
+				LiveCaptionsOn:  true,
+				OutputOptions: OutputOptions{
+					Text: transcribe.TextOptions{
+						CompactOptions: transcribe.TextCompactOptions{
+							SilenceThresholdMs:   2000,
+							MaxSegmentDurationMs: 10000,
+						},
+					},
+				},
+			},
+			expectedError: "LiveCaptionsModelSize value is not valid",
+		},
+		{
+			name: "invalid LiveCaptionsNumTranscribers",
+			cfg: CallTranscriberConfig{
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				TranscribeAPI:   TranscribeAPIDefault,
+				ModelSize:       ModelSizeMedium,
+				OutputFormat:    OutputFormatVTT,
+				NumThreads:      1,
+				LiveCaptionsOn:  true,
+				OutputOptions: OutputOptions{
+					Text: transcribe.TextOptions{
+						CompactOptions: transcribe.TextCompactOptions{
+							SilenceThresholdMs:   2000,
+							MaxSegmentDurationMs: 10000,
+						},
+					},
+				},
+			},
+			inContainer:   false,
+			expectedError: "LiveCaptionsModelSize value is not valid",
 		},
 		{
 			name: "invalid LiveCaptionsLanguage",
@@ -245,7 +312,7 @@ func TestConfigIsValid(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.cfg.IsValid()
+			err := tc.cfg.IsValid(tc.inContainer)
 			if tc.expectedError == "" {
 				require.NoError(t, err)
 			} else {
@@ -419,7 +486,7 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 
 	t.Run("default config", func(t *testing.T) {
 		var c CallTranscriberConfig
-		err := c.FromMap(cfg.ToMap()).IsValid()
+		err := c.FromMap(cfg.ToMap()).IsValid(true)
 		require.NoError(t, err)
 	})
 
@@ -431,7 +498,7 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 		var mm map[string]any
 		err = json.Unmarshal(data, &mm)
 		require.NoError(t, err)
-		err = c.FromMap(mm).IsValid()
+		err = c.FromMap(mm).IsValid(true)
 		require.NoError(t, err)
 	})
 }
