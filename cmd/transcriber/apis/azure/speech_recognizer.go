@@ -38,44 +38,28 @@ func (c SpeechRecognizerConfig) IsValid() error {
 
 type SpeechRecognizer struct {
 	cfg SpeechRecognizerConfig
+
+	speechConfig     *speech.SpeechConfig
+	speechRecognizer *speech.SpeechRecognizer
+	audioStream      *audio.PushAudioInputStream
+	audioConfig      *audio.AudioConfig
 }
 
-func NewSpeechRecognizer(cfg SpeechRecognizerConfig) (*SpeechRecognizer, error) {
-	if err := cfg.IsValid(); err != nil {
-		return nil, fmt.Errorf("failed to validate config: %w", err)
-	}
-
-	return &SpeechRecognizer{
-		cfg: cfg,
-	}, nil
-}
-
-func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, string, error) {
-	// TODO: we should likely re-use the same session throughout a track transcription to optimize
-	// resources a bit.
-
-	cfg, err := speech.NewSpeechConfigFromSubscription(s.cfg.SpeechKey, s.cfg.SpeechRegion)
+func initSpeechRecognizer(speechConfig *speech.SpeechConfig) (*speech.SpeechRecognizer, *audio.AudioConfig, *audio.PushAudioInputStream, error) {
+	audioStream, err := audio.CreatePushAudioInputStream()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create speech config: %w", err)
-	}
-	defer cfg.Close()
-
-	stream, err := audio.CreatePushAudioInputStream()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create audio stream: %w", err)
-	}
-	defer stream.Close()
-
-	audioConfig, err := audio.NewAudioConfigFromStreamInput(stream)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create audio config: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to create audio stream: %w", err)
 	}
 
-	speechRecognizer, err := speech.NewSpeechRecognizerFromConfig(cfg, audioConfig)
+	audioConfig, err := audio.NewAudioConfigFromStreamInput(audioStream)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create speech recognizer: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to create audio config: %w", err)
 	}
-	defer speechRecognizer.Close()
+
+	speechRecognizer, err := speech.NewSpeechRecognizerFromConfig(speechConfig, audioConfig)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create speech recognizer: %w", err)
+	}
 
 	speechRecognizer.SessionStarted(func(event speech.SessionEventArgs) {
 		defer event.Close()
@@ -85,24 +69,115 @@ func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, 
 		defer event.Close()
 		slog.Debug("session stopped", slog.String("sessionID", event.SessionID))
 	})
-
 	speechRecognizer.Canceled(func(event speech.SpeechRecognitionCanceledEventArgs) {
 		defer event.Close()
 		slog.Info("transcription canceled", slog.String("details", event.ErrorDetails))
 	})
-
-	if err := stream.Write(f32PCMToWAV(samples)); err != nil {
-		return nil, "", fmt.Errorf("failed to write audio data: %w", err)
-	}
-
 	speechRecognizer.Recognizing(func(event speech.SpeechRecognitionEventArgs) {
 		defer event.Close()
 		slog.Info("recognizing", slog.Any("result", event.Result))
 	})
 
-	segmentsCh := make(chan []transcribe.Segment, 1)
-	errCh := make(chan error, 1)
+	return speechRecognizer, audioConfig, audioStream, nil
+}
 
+func NewSpeechRecognizer(cfg SpeechRecognizerConfig) (*SpeechRecognizer, error) {
+	if err := cfg.IsValid(); err != nil {
+		return nil, fmt.Errorf("failed to validate config: %w", err)
+	}
+
+	speechConfig, err := speech.NewSpeechConfigFromSubscription(cfg.SpeechKey, cfg.SpeechRegion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create speech config: %w", err)
+	}
+
+	speechRecognizer, audioConfig, audioStream, err := initSpeechRecognizer(speechConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	sr := &SpeechRecognizer{
+		cfg:              cfg,
+		speechConfig:     speechConfig,
+		speechRecognizer: speechRecognizer,
+		audioConfig:      audioConfig,
+		audioStream:      audioStream,
+	}
+
+	return sr, nil
+}
+
+func (s *SpeechRecognizer) TranscribeAsync(samplesCh <-chan []float32) (<-chan transcribe.Segment, error) {
+	segmentsCh := make(chan transcribe.Segment, 1)
+	s.speechRecognizer.Recognized(func(event speech.SpeechRecognitionEventArgs) {
+		defer event.Close()
+
+		if event.Result.Reason == common.NoMatch {
+			slog.Error("no match")
+			return
+		}
+
+		if event.Result.Reason == common.Canceled {
+			slog.Error("canceled")
+			return
+		}
+
+		if len(event.Result.Text) == 0 {
+			slog.Error("empty result")
+			return
+		}
+
+		segmentsCh <- transcribe.Segment{
+			Text:    event.Result.Text,
+			StartTS: int64(event.Result.Offset.Seconds() * 1000),
+			EndTS:   int64(event.Result.Offset.Seconds()*1000 + event.Result.Duration.Seconds()*1000),
+		}
+	})
+
+	err := <-s.speechRecognizer.StartContinuousRecognitionAsync()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start recognizer: %w", err)
+	}
+
+	go func() {
+		defer func() {
+			err := <-s.speechRecognizer.StopContinuousRecognitionAsync()
+			if err != nil {
+				slog.Error("failed to stop recognizer", slog.String("err", err.Error()))
+			}
+			defer close(segmentsCh)
+		}()
+
+		for samples := range samplesCh {
+			if err := s.audioStream.Write(f32PCMToWAV(samples)); err != nil {
+				slog.Error("failed to write audio data", slog.String("err", err.Error()))
+				break
+			}
+		}
+	}()
+
+	return segmentsCh, nil
+}
+
+func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, string, error) {
+	// TODO: we should likely re-use the same session throughout a track transcription to optimize
+	// resources a bit.
+
+	inputDuration := time.Duration(float32(len(samples))/float32(audioSampleRate)) * time.Second
+
+	speechRecognizer, audioConfig, audioStream, err := initSpeechRecognizer(s.speechConfig)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to initialize recognizer: %w", err)
+	}
+
+	defer func() {
+		audioStream.CloseStream()
+		audioConfig.Close()
+		speechRecognizer.Close()
+	}()
+
+	resultsCh := make(chan speech.SpeechRecognitionResult, 1)
+	errCh := make(chan error, 1)
 	speechRecognizer.Recognized(func(event speech.SpeechRecognitionEventArgs) {
 		defer event.Close()
 
@@ -112,18 +187,28 @@ func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, 
 		}
 
 		if event.Result.Reason == common.Canceled {
-			errCh <- fmt.Errorf("canceled")
+			slog.Debug("canceled")
 			return
 		}
 
-		slog.Info("transcription completed", slog.Any("result", event.Result), slog.Any("inputLen", float32(len(samples))/float32(audioSampleRate)))
+		if len(event.Result.Text) == 0 {
+			slog.Warn("empty result")
+			return
+		}
 
-		segmentsCh <- []transcribe.Segment{
-			{
-				Text:    event.Result.Text,
-				StartTS: int64(event.Result.Offset.Seconds() * 1000),
-				EndTS:   int64(event.Result.Offset.Seconds()*1000 + event.Result.Duration.Seconds()*1000),
-			},
+		slog.Info("transcription completed", slog.Any("result", event.Result), slog.Duration("inputDuration", inputDuration))
+
+		resultsCh <- event.Result
+	})
+
+	eosCh := make(chan struct{})
+	speechRecognizer.Canceled(func(event speech.SpeechRecognitionCanceledEventArgs) {
+		defer event.Close()
+		slog.Info("transcription canceled", slog.String("details", event.ErrorDetails), slog.Any("reason", event.Reason), slog.Any("code", event.ErrorCode))
+		if event.Reason == common.EndOfStream {
+			close(eosCh)
+		} else if event.Reason == common.Error {
+			errCh <- fmt.Errorf(event.ErrorDetails)
 		}
 	})
 
@@ -138,20 +223,56 @@ func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, 
 		}
 	}()
 
-	// This is important as it flushes out any remaining audio data.
-	stream.CloseStream()
+	if err := audioStream.Write(f32PCMToWAV(samples)); err != nil {
+		return nil, "", fmt.Errorf("failed to write audio data: %w", err)
+	}
 
-	select {
-	case segments := <-segmentsCh:
-		slog.Info("returning segments")
-		return segments, "", nil
-	case <-time.After(10 * time.Second):
-		return nil, "", fmt.Errorf("timed out waiting for transcription")
-	case <-errCh:
-		return nil, "", fmt.Errorf("transcription failed: %w", err)
+	// This is important as it flushes out any remaining audio data.
+	audioStream.CloseStream()
+
+	timeoutCh := time.After(max(inputDuration*2, 10*time.Second))
+
+	var segments []transcribe.Segment
+	for {
+		select {
+		case result := <-resultsCh:
+			segment := transcribe.Segment{
+				Text:    result.Text,
+				StartTS: int64(result.Offset.Seconds() * 1000),
+				EndTS:   int64(result.Offset.Seconds()*1000 + result.Duration.Seconds()*1000),
+			}
+			segments = append(segments, segment)
+		case <-timeoutCh:
+			return nil, "", fmt.Errorf("timed out waiting for transcription")
+		case err := <-errCh:
+			return nil, "", fmt.Errorf("transcription failed: %w", err)
+		case <-eosCh:
+			slog.Info("done transcribing, returning segments", slog.Int("numSegments", len(segments)))
+			return segments, "", nil
+		}
 	}
 }
 
 func (s *SpeechRecognizer) Destroy() error {
+	if s.audioStream != nil {
+		s.audioStream.CloseStream()
+	}
+
+	if s.audioConfig != nil {
+		s.audioConfig.Close()
+	}
+
+	if s.speechRecognizer != nil {
+		err := <-s.speechRecognizer.StopContinuousRecognitionAsync()
+		if err != nil {
+			slog.Error("failed to stop recognizer", slog.String("err", err.Error()))
+		}
+		s.speechRecognizer.Close()
+	}
+
+	if s.speechConfig != nil {
+		s.speechConfig.Close()
+	}
+
 	return nil
 }

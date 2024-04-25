@@ -510,9 +510,11 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 			PrintProgress: true,
 		})
 	case config.TranscribeAPIAzure:
+		speechKey, _ := t.cfg.TranscribeAPIOptions["AZURE_SPEECH_KEY"].(string)
+		speechRegion, _ := t.cfg.TranscribeAPIOptions["AZURE_SPEECH_REGION"].(string)
 		return azure.NewSpeechRecognizer(azure.SpeechRecognizerConfig{
-			SpeechKey:    t.cfg.TranscribeAPIOptions["SPEECH_KEY"].(string),
-			SpeechRegion: t.cfg.TranscribeAPIOptions["SPEECH_REGION"].(string),
+			SpeechKey:    speechKey,
+			SpeechRegion: speechRegion,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)
