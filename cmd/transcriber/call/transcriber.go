@@ -43,7 +43,7 @@ type Transcriber struct {
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	if err := cfg.IsValid(true); err != nil {
-		if apiClient, err2 := CreateApiClient(cfg); err2 == nil {
+		if apiClient, err2 := CreateAPIClient(cfg); err2 == nil {
 			t := &Transcriber{cfg: cfg, apiClient: apiClient}
 			if err3 := t.ReportJobFailure(fmt.Sprintf("failed to validate config: %s", err.Error())); err3 != nil {
 				slog.Error("failed to report job failure", slog.String("err", err3.Error()))
@@ -63,7 +63,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	}
 
 	// We have already validated the cfg above, so no error.
-	apiClient, _ := CreateApiClient(cfg)
+	apiClient, _ := CreateAPIClient(cfg)
 
 	t := &Transcriber{
 		cfg:                 cfg,
@@ -78,7 +78,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 	return t, nil
 }
 
-func CreateApiClient(cfg config.CallTranscriberConfig) (*model.Client4, error) {
+func CreateAPIClient(cfg config.CallTranscriberConfig) (*model.Client4, error) {
 	if err := cfg.IsValid(true); err != nil {
 		if cfg.SiteURL == "" {
 			return nil, fmt.Errorf("SiteURL cannot be empty")
