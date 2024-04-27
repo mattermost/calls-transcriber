@@ -425,7 +425,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 
 	for {
 		select {
-		case <-t.captionsPoolDoneCh:
+		case <-t.closingCh:
 			slog.Debug(fmt.Sprintf("live captions, handleTranscriptionRequests: closing transcriber #%d", num))
 			return
 		case packet := <-t.captionsPoolQueueCh:

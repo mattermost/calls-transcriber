@@ -10,8 +10,9 @@ import (
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 
-	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/rtcd/client"
+
+	"github.com/mattermost/mattermost/server/public/model"
 )
 
 const (
@@ -36,7 +37,7 @@ type Transcriber struct {
 
 	captionsPoolQueueCh chan captionPackage
 	captionsPoolWg      sync.WaitGroup
-	captionsPoolDoneCh  chan struct{}
+	closingCh           chan struct{}
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr error) {
@@ -83,7 +84,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 		doneCh:              make(chan struct{}),
 		trackCtxs:           make(chan trackContext, maxTracksContexes),
 		captionsPoolQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
-		captionsPoolDoneCh:  make(chan struct{}),
+		closingCh:           make(chan struct{}),
 	}
 
 	return
@@ -92,7 +93,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 func (t *Transcriber) Start(ctx context.Context) error {
 	var connectOnce sync.Once
 	connectedCh := make(chan struct{})
-	t.client.On(client.RTCConnectEvent, func(_ any) error {
+	if err := t.client.On(client.RTCConnectEvent, func(_ any) error {
 		slog.Debug("transcoder RTC client connected")
 
 		connectOnce.Do(func() {
@@ -100,16 +101,22 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		})
 
 		return nil
-	})
-	t.client.On(client.RTCTrackEvent, t.handleTrack)
-	t.client.On(client.CloseEvent, func(_ any) error {
+	}); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
+	if err := t.client.On(client.RTCTrackEvent, t.handleTrack); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
+	if err := t.client.On(client.CloseEvent, func(_ any) error {
 		go t.done()
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
 
 	var startOnce sync.Once
 	startedCh := make(chan struct{})
-	t.client.On(client.WSCallRecordingState, func(ctx any) error {
+	if err := t.client.On(client.WSCallRecordingStateEvent, func(ctx any) error {
 		if recState, ok := ctx.(client.CallJobState); ok && recState.StartAt > 0 {
 			slog.Debug("received call recording state", slog.Any("jobState", recState))
 
@@ -127,9 +134,11 @@ func (t *Transcriber) Start(ctx context.Context) error {
 			})
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
 
-	t.client.On(client.WSJobStopEvent, func(ctx any) error {
+	if err := t.client.On(client.WSJobStopEvent, func(ctx any) error {
 		jobID, _ := ctx.(string)
 		if jobID == "" {
 			return fmt.Errorf("unexpected empty jobID")
@@ -141,7 +150,35 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
+
+	var aiMut sync.Mutex
+	var aiConnected bool
+	if err := t.client.On(client.WSSummonAIEvent, func(ctx any) error {
+		authToken, _ := ctx.(string)
+		slog.Info("AI was summoned", slog.String("authToken", authToken))
+
+		aiMut.Lock()
+		defer aiMut.Unlock()
+
+		if !aiConnected {
+			aiConnected = true
+			go func() {
+				t.summonAI(authToken, t.closingCh)
+				aiMut.Lock()
+				aiConnected = false
+				aiMut.Unlock()
+			}()
+		} else {
+			slog.Warn("AI already connected")
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
 
 	if err := t.client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
@@ -202,7 +239,7 @@ func (t *Transcriber) Err() error {
 
 func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
-		close(t.captionsPoolDoneCh)
+		close(t.closingCh)
 		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})

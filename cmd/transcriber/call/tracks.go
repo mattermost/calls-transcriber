@@ -53,9 +53,14 @@ type trackContext struct {
 // handleTrack gets called whenever a new WebRTC track is received (e.g. someone unmuted
 // for the first time). As soon as this happens we start processing the track.
 func (t *Transcriber) handleTrack(ctx any) error {
-	track, ok := ctx.(*webrtc.TrackRemote)
+	m, ok := ctx.(map[string]any)
 	if !ok {
-		return fmt.Errorf("failed to convert track")
+		return fmt.Errorf("unexpected context type")
+	}
+
+	track, ok := m["track"].(*webrtc.TrackRemote)
+	if !ok {
+		return fmt.Errorf("unexpected track type")
 	}
 
 	trackID := track.ID()
@@ -510,9 +515,11 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 			PrintProgress: true,
 		})
 	case config.TranscribeAPIAzure:
+		speechKey, _ := t.cfg.TranscribeAPIOptions["AZURE_SPEECH_KEY"].(string)
+		speechRegion, _ := t.cfg.TranscribeAPIOptions["AZURE_SPEECH_REGION"].(string)
 		return azure.NewSpeechRecognizer(azure.SpeechRecognizerConfig{
-			SpeechKey:    t.cfg.TranscribeAPIOptions["SPEECH_KEY"].(string),
-			SpeechRegion: t.cfg.TranscribeAPIOptions["SPEECH_REGION"].(string),
+			SpeechKey:    speechKey,
+			SpeechRegion: speechRegion,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)
