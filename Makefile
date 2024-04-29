@@ -106,6 +106,7 @@ GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.bu
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildVersion=$(APP_VERSION)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildDate=$(BUILD_DATE)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.goVersion=$(GO_VERSION)"
+GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/cmd/transcriber/config.inTranscriber=true"
 # Architectures to build for
 GO_BUILD_PLATFORMS           ?= "linux-${ARCH}"
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))

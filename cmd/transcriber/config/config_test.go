@@ -16,7 +16,7 @@ func TestConfigIsValid(t *testing.T) {
 	tcs := []struct {
 		name          string
 		cfg           CallTranscriberConfig
-		inContainer   bool
+		inTranscriber string
 		expectedError string
 	}{
 		{
@@ -39,32 +39,31 @@ func TestConfigIsValid(t *testing.T) {
 			expectedError: "CallID cannot be empty",
 		},
 		{
-			name: "missing PostID",
+			name: "missing TranscriptionID",
 			cfg: CallTranscriberConfig{
-				SiteURL:   "http://localhost:8065",
-				CallID:    "8w8jorhr7j83uqr6y1st894hqe",
-				AuthToken: "qj75unbsef83ik9p7ueypb6iyw",
+				SiteURL: "http://localhost:8065",
+				CallID:  "8w8jorhr7j83uqr6y1st894hqe",
 			},
-			expectedError: "PostID cannot be empty",
+			expectedError: "TranscriptionID cannot be empty",
 		},
 		{
 			name: "missing AuthToken",
 			cfg: CallTranscriberConfig{
-				SiteURL: "http://localhost:8065",
-				CallID:  "8w8jorhr7j83uqr6y1st894hqe",
-				PostID:  "udzdsg7dwidbzcidx5khrf8nee",
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
 			},
 			expectedError: "AuthToken cannot be empty",
 		},
 		{
-			name: "missing TranscriptionID",
+			name: "missing PostID",
 			cfg: CallTranscriberConfig{
-				SiteURL:   "http://localhost:8065",
-				CallID:    "8w8jorhr7j83uqr6y1st894hqe",
-				PostID:    "udzdsg7dwidbzcidx5khrf8nee",
-				AuthToken: "qj75unbsef83ik9p7ueypb6iyw",
+				SiteURL:         "http://localhost:8065",
+				CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+				TranscriptionID: "on5yfih5etn5m8rfdidamc1oxa",
+				AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 			},
-			expectedError: "TranscriptionID cannot be empty",
+			expectedError: "PostID cannot be empty",
 		},
 		{
 			name: "invalid TranscribeAPI",
@@ -115,7 +114,7 @@ func TestConfigIsValid(t *testing.T) {
 				ModelSize:       ModelSizeMedium,
 				OutputFormat:    OutputFormatVTT,
 			},
-			inContainer:   true,
+			inTranscriber: "true",
 			expectedError: fmt.Sprintf("NumThreads should be in the range [1, %d]", runtime.NumCPU()),
 		},
 		{
@@ -130,7 +129,7 @@ func TestConfigIsValid(t *testing.T) {
 				ModelSize:       ModelSizeMedium,
 				OutputFormat:    OutputFormatVTT,
 			},
-			inContainer:   false,
+			inTranscriber: "false",
 			expectedError: "SilenceThresholdMs should be a positive number",
 		},
 		{
@@ -201,7 +200,7 @@ func TestConfigIsValid(t *testing.T) {
 					},
 				},
 			},
-			inContainer:   true,
+			inTranscriber: "true",
 			expectedError: fmt.Sprintf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", runtime.NumCPU()),
 		},
 		{
@@ -250,7 +249,7 @@ func TestConfigIsValid(t *testing.T) {
 					},
 				},
 			},
-			inContainer:   false,
+			inTranscriber: "false",
 			expectedError: "LiveCaptionsModelSize value is not valid",
 		},
 		{
@@ -312,7 +311,8 @@ func TestConfigIsValid(t *testing.T) {
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.cfg.IsValid(tc.inContainer)
+			inTranscriber = tc.inTranscriber
+			err := tc.cfg.IsValid()
 			if tc.expectedError == "" {
 				require.NoError(t, err)
 			} else {
@@ -484,9 +484,11 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	cfg.OutputOptions.WebVTT.OmitSpeaker = true
 	cfg.SetDefaults()
 
+	inTranscriber = "true"
+
 	t.Run("default config", func(t *testing.T) {
 		var c CallTranscriberConfig
-		err := c.FromMap(cfg.ToMap()).IsValid(true)
+		err := c.FromMap(cfg.ToMap()).IsValid()
 		require.NoError(t, err)
 	})
 
@@ -498,7 +500,7 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 		var mm map[string]any
 		err = json.Unmarshal(data, &mm)
 		require.NoError(t, err)
-		err = c.FromMap(mm).IsValid(true)
+		err = c.FromMap(mm).IsValid()
 		require.NoError(t, err)
 	})
 }
