@@ -186,8 +186,6 @@ func (t *Transcriber) Start(ctx context.Context) error {
 
 	select {
 	case <-connectedCh:
-		t.startTime.Store(newTimeP(time.Now()))
-		close(startedCh)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
