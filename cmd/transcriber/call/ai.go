@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/call/utils"
 
@@ -68,7 +69,7 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		return
 	}
 
-	outTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
+	outTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
 		MimeType:     "audio/opus",
 		ClockRate:    48000,
 		Channels:     2,
@@ -103,6 +104,15 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		return newPost, nil
 	}
 
+	ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
+	aiUser, _, err := t.apiClient.GetUserByUsername(ctx, "ai", "")
+	if err != nil {
+		cancelCtx()
+		slog.Error("failed to get AI user", slog.String("err", err.Error()))
+		return
+	}
+	cancelCtx()
+
 	aiPost, err := postToAI(&model.Post{Message: "This is the start of the in-call conversation"})
 	if err != nil {
 		slog.Error("failed to post to AI", slog.String("err", err.Error()))
@@ -112,30 +122,54 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 	slog.Info("AI post created", slog.String("postID", aiPost.Id))
 
 	speakCh := make(chan string, 10)
-
 	var prevMsg string
-
-	if err := t.client.On(client.WSAIPostUpdateEvent, func(ctx any) error {
-		data, ok := ctx.(map[string]any)
+	var currentAIPostID string
+	if err := t.client.On(client.WSGenericEvent, func(ctx any) error {
+		ev, ok := ctx.(*model.WebSocketEvent)
 		if !ok {
 			return fmt.Errorf("unexpected context type")
 		}
 
-		msg, _ := data["next"].(string)
-		postID, _ := data["post_id"].(string)
+		switch ev.EventType() {
+		case "posted":
+			data := ev.GetData()
+			postData, _ := data["post"].(string)
 
-		slog.Info("ai post update!", slog.String("message", msg), slog.String("postID", postID))
-
-		if prevMsg != "" && msg == "" {
-			select {
-			case speakCh <- prevMsg:
-				slog.Debug("msg sent!", slog.String("msg", prevMsg))
-			default:
-				slog.Error("failed to write on textCh")
+			var post model.Post
+			if err := json.Unmarshal([]byte(postData), &post); err != nil {
+				slog.Error("failed to unmarshal post", slog.String("err", err.Error()))
+				break
 			}
-			prevMsg = ""
-		} else if msg != "" {
-			prevMsg = msg
+
+			if post.RootId == aiPost.Id && post.UserId == aiUser.Id {
+				slog.Debug("setting current AI post id", slog.String("id", post.Id))
+				currentAIPostID = post.Id
+			}
+		case "custom_mattermost-ai_postupdate":
+			data := ev.GetData()
+			msg, _ := data["next"].(string)
+			postID, _ := data["post_id"].(string)
+
+			if postID != currentAIPostID {
+				break
+			}
+
+			slog.Info("ai post update!", slog.String("message", msg), slog.String("postID", postID))
+
+			if prevMsg != "" && msg == "" {
+				select {
+				case speakCh <- prevMsg:
+					slog.Debug("msg sent!", slog.String("msg", prevMsg))
+				default:
+					slog.Error("failed to write on textCh")
+				}
+				prevMsg = ""
+			} else if msg != "" {
+				prevMsg = msg
+			}
+		default:
+			slog.Info(string(ev.EventType()))
+			return nil
 		}
 
 		return nil
@@ -144,8 +178,36 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		return
 	}
 
-	var active atomic.Bool
-	active.Store(false)
+	var active atomic.Pointer[time.Time]
+	active.Store(&time.Time{})
+	isActive := func() bool {
+		return !active.Load().IsZero()
+	}
+	setActive := func(val bool) {
+		if val {
+			active.Store(newTimeP(time.Now()))
+		} else {
+			active.Store(&time.Time{})
+		}
+	}
+
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				if isActive() && time.Since(*active.Load()) > 10*time.Second {
+					slog.Info("deactivating after timeout")
+					setActive(false)
+					if err := c.Mute(); err != nil {
+						slog.Error("failed to mute", slog.String("err", err.Error()))
+					}
+				}
+			case <-stopCh:
+				return
+			}
+		}
+	}()
 
 	if err := c.On(client.RTCTrackEvent, func(ctx any) error {
 		m, ok := ctx.(map[string]any)
@@ -202,7 +264,10 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			return fmt.Errorf("failed to encode audio: %w", err)
 		}
 
-		err = utils.TransmitAudio(c, encodedCh, outTrack, &active)
+		var sender *webrtc.RTPSender
+		err = utils.TransmitAudio(encodedCh, outTrack, func() *webrtc.RTPSender {
+			return sender
+		}, isActive, setActive)
 		if err != nil {
 			return fmt.Errorf("failed to transmit audio: %w", err)
 		}
@@ -210,20 +275,30 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		for text := range transcribedCh {
 			slog.Debug("transcribed: " + text)
 
-			if !active.Load() && containsString(strings.ToLower(text), aiActivationKeywords) {
-				slog.Debug("activation keyword triggered")
-				active.Store(true)
+			// keep it active if more text is transcribed while already active.
+			if isActive() {
+				setActive(true)
 			}
 
-			if active.Load() && containsString(strings.ToLower(text), aiDeactivationKeywords) {
+			if !isActive() && containsString(strings.ToLower(text), aiActivationKeywords) {
+				slog.Debug("activation keyword triggered")
+				sender, err = c.Unmute(outTrack)
+				if err != nil {
+					slog.Error("failed to unmute", slog.String("err", err.Error()))
+				} else {
+					setActive(true)
+				}
+			}
+
+			if containsString(strings.ToLower(text), aiDeactivationKeywords) {
 				slog.Debug("deactivation keyword triggered")
-				active.Store(false)
+				setActive(false)
 				if err := c.Mute(); err != nil {
 					slog.Error("failed to mute", slog.String("err", err.Error()))
 				}
 			}
 
-			if active.Load() {
+			if isActive() {
 				msg := text
 				msg += " Please keep it brief as if you were speaking in a call. Also please don't output emojis."
 				post := &model.Post{Message: msg, RootId: aiPost.Id, UserId: speakingUser.Id}

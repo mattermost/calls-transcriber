@@ -8,7 +8,7 @@ require (
 	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.0.12
-	github.com/mattermost/rtcd v0.14.1-0.20240426230630-b0e6b1c17e7a
+	github.com/mattermost/rtcd v0.14.1-0.20240503205319-81a8199c0aed
 	github.com/pion/interceptor v0.1.28
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.8.5
