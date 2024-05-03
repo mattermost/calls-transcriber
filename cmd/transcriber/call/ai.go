@@ -196,7 +196,7 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		for {
 			select {
 			case <-ticker.C:
-				if isActive() && time.Since(*active.Load()) > 10*time.Second {
+				if isActive() && time.Since(*active.Load()) > 30*time.Second {
 					slog.Info("deactivating after timeout")
 					setActive(false)
 					if err := c.Mute(); err != nil {
