@@ -113,7 +113,7 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 	}
 	cancelCtx()
 
-	aiPost, err := postToAI(&model.Post{Message: "This is the start of the in-call conversation"})
+	aiPost, err := postToAI(&model.Post{Message: "What follows in this thread is a real time transcription of the current call you are in."})
 	if err != nil {
 		slog.Error("failed to post to AI", slog.String("err", err.Error()))
 		return
@@ -299,10 +299,16 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			}
 
 			if isActive() {
-				msg := text
-				msg += " Please keep it brief as if you were speaking in a call. Also please don't output emojis."
+				msg := fmt.Sprintf("You are speaking in a call. Please try to keep it brief. Also please don't output emojis or other special characters. %s is speaking to you what follows:\n", speakingUser.GetDisplayName(model.ShowFullName))
+
+				msg += text
 				post := &model.Post{Message: msg, RootId: aiPost.Id, UserId: speakingUser.Id}
 				post.AddProp("activate_ai", true)
+				if _, err := postToAI(post); err != nil {
+					slog.Error("failed to post to AI", slog.String("err", err.Error()))
+				}
+			} else {
+				post := &model.Post{Message: text, RootId: aiPost.Id, UserId: speakingUser.Id}
 				if _, err := postToAI(post); err != nil {
 					slog.Error("failed to post to AI", slog.String("err", err.Error()))
 				}
