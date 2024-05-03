@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	encodedChSize = 1000
+	encodedChSize = 10000
 )
 
 func EncodeAudio(samplesCh <-chan []int16) (<-chan []byte, error) {
