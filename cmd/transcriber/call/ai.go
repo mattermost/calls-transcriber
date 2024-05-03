@@ -190,7 +190,6 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			active.Store(&time.Time{})
 		}
 	}
-
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for {
@@ -237,7 +236,7 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		}
 
 		if track.Codec().MimeType != webrtc.MimeTypeOpus {
-			slog.Debug("ignoring non voice track", slog.String("trackID", track.ID()))
+			slog.Warn("ignoring unsupported mimetype for track", slog.String("mimeType", track.Codec().MimeType), slog.String("trackID", track.ID()))
 			return receiver.Stop()
 		}
 
@@ -248,7 +247,7 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 
 		if speakingUser.Username == "ai" {
 			slog.Debug("skipping our own track", slog.String("trackID", track.ID()))
-			return nil
+			return receiver.Stop()
 		}
 
 		decodedCh, err := utils.DecodeTrack(track)
