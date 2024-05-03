@@ -220,18 +220,25 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			return fmt.Errorf("unexpected track type")
 		}
 
-		if track.Codec().MimeType != webrtc.MimeTypeOpus {
-			slog.Debug("ignoring non voice track", slog.String("trackID", track.ID()))
-			receiver, ok := m["receiver"].(*webrtc.RTPReceiver)
-			if !ok {
-				return fmt.Errorf("unexpected receiver type")
-			}
+		receiver, ok := m["receiver"].(*webrtc.RTPReceiver)
+		if !ok {
+			return fmt.Errorf("unexpected receiver type")
+		}
+
+		trackType, sessionID, err := client.ParseTrackID(track.ID())
+		if err != nil {
+			slog.Error("failed to parse track ID", slog.String("err", err.Error()))
 			return receiver.Stop()
 		}
 
-		_, sessionID, err := client.ParseTrackID(track.ID())
-		if err != nil {
-			return fmt.Errorf("failed to parse track ID: %w", err)
+		if trackType != client.TrackTypeVoice {
+			slog.Debug("ignoring non voice track", slog.String("trackID", track.ID()))
+			return receiver.Stop()
+		}
+
+		if track.Codec().MimeType != webrtc.MimeTypeOpus {
+			slog.Debug("ignoring non voice track", slog.String("trackID", track.ID()))
+			return receiver.Stop()
 		}
 
 		speakingUser, err := t.getUserForSession(sessionID)
@@ -272,48 +279,50 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			return fmt.Errorf("failed to transmit audio: %w", err)
 		}
 
-		for text := range transcribedCh {
-			slog.Debug("transcribed: " + text)
+		go func() {
+			for text := range transcribedCh {
+				slog.Debug("transcribed: " + text)
 
-			// keep it active if more text is transcribed while already active.
-			if isActive() {
-				setActive(true)
-			}
-
-			if !isActive() && containsString(strings.ToLower(text), aiActivationKeywords) {
-				slog.Debug("activation keyword triggered")
-				sender, err = c.Unmute(outTrack)
-				if err != nil {
-					slog.Error("failed to unmute", slog.String("err", err.Error()))
-				} else {
+				// keep it active if more text is transcribed while already active.
+				if isActive() {
 					setActive(true)
 				}
-			}
 
-			if containsString(strings.ToLower(text), aiDeactivationKeywords) {
-				slog.Debug("deactivation keyword triggered")
-				setActive(false)
-				if err := c.Mute(); err != nil {
-					slog.Error("failed to mute", slog.String("err", err.Error()))
+				if !isActive() && containsString(strings.ToLower(text), aiActivationKeywords) {
+					slog.Debug("activation keyword triggered")
+					sender, err = c.Unmute(outTrack)
+					if err != nil {
+						slog.Error("failed to unmute", slog.String("err", err.Error()))
+					} else {
+						setActive(true)
+					}
+				}
+
+				if containsString(strings.ToLower(text), aiDeactivationKeywords) {
+					slog.Debug("deactivation keyword triggered")
+					setActive(false)
+					if err := c.Mute(); err != nil {
+						slog.Error("failed to mute", slog.String("err", err.Error()))
+					}
+				}
+
+				if isActive() {
+					msg := fmt.Sprintf("You are speaking in a call. Please try to keep it brief. Also please don't output emojis or other special characters. %s is speaking to you what follows:\n", speakingUser.GetDisplayName(model.ShowFullName))
+
+					msg += text
+					post := &model.Post{Message: msg, RootId: aiPost.Id, UserId: speakingUser.Id}
+					post.AddProp("activate_ai", true)
+					if _, err := postToAI(post); err != nil {
+						slog.Error("failed to post to AI", slog.String("err", err.Error()))
+					}
+				} else {
+					post := &model.Post{Message: text, RootId: aiPost.Id, UserId: speakingUser.Id}
+					if _, err := postToAI(post); err != nil {
+						slog.Error("failed to post to AI", slog.String("err", err.Error()))
+					}
 				}
 			}
-
-			if isActive() {
-				msg := fmt.Sprintf("You are speaking in a call. Please try to keep it brief. Also please don't output emojis or other special characters. %s is speaking to you what follows:\n", speakingUser.GetDisplayName(model.ShowFullName))
-
-				msg += text
-				post := &model.Post{Message: msg, RootId: aiPost.Id, UserId: speakingUser.Id}
-				post.AddProp("activate_ai", true)
-				if _, err := postToAI(post); err != nil {
-					slog.Error("failed to post to AI", slog.String("err", err.Error()))
-				}
-			} else {
-				post := &model.Post{Message: text, RootId: aiPost.Id, UserId: speakingUser.Id}
-				if _, err := postToAI(post); err != nil {
-					slog.Error("failed to post to AI", slog.String("err", err.Error()))
-				}
-			}
-		}
+		}()
 
 		return nil
 	}); err != nil {

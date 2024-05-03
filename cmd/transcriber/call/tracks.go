@@ -63,6 +63,11 @@ func (t *Transcriber) handleTrack(ctx any) error {
 		return fmt.Errorf("unexpected track type")
 	}
 
+	receiver, ok := m["receiver"].(*webrtc.RTPReceiver)
+	if !ok {
+		return fmt.Errorf("unexpected receiver type")
+	}
+
 	trackID := track.ID()
 
 	trackType, sessionID, err := client.ParseTrackID(trackID)
@@ -71,11 +76,11 @@ func (t *Transcriber) handleTrack(ctx any) error {
 	}
 	if trackType != client.TrackTypeVoice {
 		slog.Debug("ignoring non voice track", slog.String("trackID", trackID))
-		return nil
+		return receiver.Stop()
 	}
 	if mt := track.Codec().MimeType; mt != webrtc.MimeTypeOpus {
 		slog.Warn("ignoring unsupported mimetype for track", slog.String("mimeType", mt), slog.String("trackID", trackID))
-		return nil
+		return receiver.Stop()
 	}
 
 	user, err := t.getUserForSession(sessionID)
