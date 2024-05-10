@@ -30,7 +30,6 @@ func TransmitAudio(pktsCh <-chan []byte, outTrack *webrtc.TrackLocalStaticRTP,
 		ticker := time.NewTicker(frameDuration)
 		defer ticker.Stop()
 		var lastPktTime time.Time
-		var firstPktTime time.Time
 		var audioLevelExtensionID *int
 
 		var audioLevel rtp.AudioLevelExtension
@@ -46,10 +45,6 @@ func TransmitAudio(pktsCh <-chan []byte, outTrack *webrtc.TrackLocalStaticRTP,
 				log.Printf("failed to marshal audio level: %s", err.Error())
 			}
 			for _, p := range packets {
-				if firstPktTime.IsZero() {
-					firstPktTime = time.Now()
-				}
-
 				audioLevel.Level = uint8(audioLevelBase)
 				if pkts%2 == 0 {
 					audioLevel.Level = uint8(audioLevelBase + audioLevelDev)

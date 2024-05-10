@@ -306,7 +306,7 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 				}
 
 				if isActive() {
-					msg := fmt.Sprintf("You are speaking in a call. Please try to keep it brief. Also please don't output emojis or other special characters. %s is speaking to you what follows:\n", speakingUser.GetDisplayName(model.ShowFullName))
+					msg := fmt.Sprintf("You are speaking in a call. Please try to keep it brief. Also please don't output emojis or other special characters. %s is saying what follows:\n", speakingUser.GetDisplayName(model.ShowFullName))
 
 					msg += text
 					post := &model.Post{Message: msg, RootId: aiPost.Id, UserId: speakingUser.Id}
