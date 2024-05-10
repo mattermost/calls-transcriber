@@ -120,10 +120,6 @@ func (cfg CallTranscriberConfig) IsValidURL() error {
 }
 
 func (cfg CallTranscriberConfig) IsValid() error {
-	if cfg == (CallTranscriberConfig{}) {
-		return fmt.Errorf("config cannot be empty")
-	}
-
 	if err := cfg.IsValidURL(); err != nil {
 		return err
 	}
