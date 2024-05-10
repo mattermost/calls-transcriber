@@ -448,7 +448,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 
 func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
-	case config.TranscribeAPIWhisperCPP:
+	case config.TranscribeAPIWhisperCPP, config.TranscribeAPIAzure:
 		return whisper.NewContext(whisper.Config{
 			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.LiveCaptionsModelSize))),
 			NumThreads:    t.cfg.LiveCaptionsNumThreadsPerTranscriber,
