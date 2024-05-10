@@ -16,7 +16,6 @@ import (
 
 const (
 	pluginID          = "com.mattermost.calls"
-	wsEvPrefix        = "custom_" + pluginID + "_"
 	wsEvCaption       = "custom_" + pluginID + "_caption"
 	wsEvMetric        = "custom_" + pluginID + "_metric"
 	maxTracksContexes = 256
@@ -54,7 +53,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 	}
 
 	defer func() {
-		if retErr != nil {
+		if retErr != nil && t != nil {
 			retErrStr := fmt.Errorf("failed to create Transcriber: %w", retErr)
 			if err := t.ReportJobFailure(retErrStr.Error()); err != nil {
 				retErr = fmt.Errorf("failed to report job failure: %s, original error: %s", err.Error(), retErrStr)
@@ -62,18 +61,18 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 		}
 	}()
 
-	if retErr = cfg.IsValid(); retErr != nil {
-		return
+	if err := cfg.IsValid(); err != nil {
+		return t, err
 	}
 
-	var rtcdClient *client.Client
-	if rtcdClient, retErr = client.New(client.Config{
+	rtcdClient, err := client.New(client.Config{
 		SiteURL:   cfg.SiteURL,
 		AuthToken: cfg.AuthToken,
 		ChannelID: cfg.CallID,
 		JobID:     cfg.TranscriptionID,
-	}); retErr != nil {
-		return
+	})
+	if err != nil {
+		return t, err
 	}
 
 	t = &Transcriber{
