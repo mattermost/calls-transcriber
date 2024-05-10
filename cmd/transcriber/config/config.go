@@ -12,7 +12,10 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 )
 
-var idRE = regexp.MustCompile(`^[a-z0-9]{26}$`)
+var (
+	inTranscriber = "false"
+	idRE          = regexp.MustCompile(`^[a-z0-9]{26}$`)
+)
 
 const (
 	// defaults
@@ -95,10 +98,7 @@ func (a TranscribeAPI) IsValid() bool {
 	}
 }
 
-func (cfg CallTranscriberConfig) IsValid() error {
-	if cfg == (CallTranscriberConfig{}) {
-		return fmt.Errorf("config cannot be empty")
-	}
+func (cfg CallTranscriberConfig) IsValidURL() error {
 	if cfg.SiteURL == "" {
 		return fmt.Errorf("SiteURL cannot be empty")
 	}
@@ -112,16 +112,28 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("SiteURL parsing failed: invalid path %q", u.Path)
 	}
 
+	return nil
+}
+
+func (cfg CallTranscriberConfig) IsValid() error {
+	if cfg == (CallTranscriberConfig{}) {
+		return fmt.Errorf("config cannot be empty")
+	}
+
+	if err := cfg.IsValidURL(); err != nil {
+		return err
+	}
+
 	if cfg.CallID == "" {
 		return fmt.Errorf("CallID cannot be empty")
 	} else if !idRE.MatchString(cfg.CallID) {
 		return fmt.Errorf("CallID parsing failed")
 	}
 
-	if cfg.PostID == "" {
-		return fmt.Errorf("PostID cannot be empty")
-	} else if !idRE.MatchString(cfg.PostID) {
-		return fmt.Errorf("PostID parsing failed")
+	if cfg.TranscriptionID == "" {
+		return fmt.Errorf("TranscriptionID cannot be empty")
+	} else if !idRE.MatchString(cfg.TranscriptionID) {
+		return fmt.Errorf("TranscriptionID parsing failed")
 	}
 
 	if cfg.AuthToken == "" {
@@ -130,10 +142,10 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("AuthToken parsing failed")
 	}
 
-	if cfg.TranscriptionID == "" {
-		return fmt.Errorf("TranscriptionID cannot be empty")
-	} else if !idRE.MatchString(cfg.TranscriptionID) {
-		return fmt.Errorf("TranscriptionID parsing failed")
+	if cfg.PostID == "" {
+		return fmt.Errorf("PostID cannot be empty")
+	} else if !idRE.MatchString(cfg.PostID) {
+		return fmt.Errorf("PostID parsing failed")
 	}
 
 	if !cfg.TranscribeAPI.IsValid() {
@@ -146,16 +158,21 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		return fmt.Errorf("OutputFormat value is not valid")
 	}
 
-	numCPU := runtime.NumCPU()
-	if cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
-		return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
-	}
-	if cfg.LiveCaptionsOn {
-		if cfg.LiveCaptionsNumTranscribers < 1 || cfg.LiveCaptionsNumThreadsPerTranscriber < 1 ||
-			cfg.LiveCaptionsNumTranscribers*cfg.LiveCaptionsNumThreadsPerTranscriber > numCPU {
-			return fmt.Errorf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", numCPU)
+	if inTranscriber == "true" {
+		numCPU := runtime.NumCPU()
+		if cfg.NumThreads < 1 || cfg.NumThreads > numCPU {
+			return fmt.Errorf("NumThreads should be in the range [1, %d]", numCPU)
 		}
 
+		if cfg.LiveCaptionsOn {
+			if cfg.LiveCaptionsNumTranscribers < 1 || cfg.LiveCaptionsNumThreadsPerTranscriber < 1 ||
+				cfg.LiveCaptionsNumTranscribers*cfg.LiveCaptionsNumThreadsPerTranscriber > numCPU {
+				return fmt.Errorf("LiveCaptionsNumTranscribers * LiveCaptionsNumThreadsPerTranscriber should be in the range [1, %d]", numCPU)
+			}
+		}
+	}
+
+	if cfg.LiveCaptionsOn {
 		if !cfg.LiveCaptionsModelSize.IsValid() {
 			return fmt.Errorf("LiveCaptionsModelSize value is not valid")
 		}

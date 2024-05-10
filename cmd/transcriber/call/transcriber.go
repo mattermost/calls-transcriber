@@ -16,7 +16,6 @@ import (
 
 const (
 	pluginID          = "com.mattermost.calls"
-	wsEvPrefix        = "custom_" + pluginID + "_"
 	wsEvCaption       = "custom_" + pluginID + "_caption"
 	wsEvMetric        = "custom_" + pluginID + "_metric"
 	maxTracksContexes = 256
@@ -40,27 +39,45 @@ type Transcriber struct {
 	captionsPoolDoneCh  chan struct{}
 }
 
-func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
-	if err := cfg.IsValid(); err != nil {
-		return nil, fmt.Errorf("failed to validate config: %w", err)
+func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr error) {
+	if err := cfg.IsValidURL(); err != nil {
+		return nil, fmt.Errorf("failed to validate URL: %w", err)
 	}
 
-	client, err := client.New(client.Config{
+	apiClient := model.NewAPIv4Client(cfg.SiteURL)
+	apiClient.SetToken(cfg.AuthToken)
+
+	t = &Transcriber{
+		cfg:       cfg,
+		apiClient: apiClient,
+	}
+
+	defer func() {
+		if retErr != nil && t != nil {
+			retErrStr := fmt.Errorf("failed to create Transcriber: %w", retErr)
+			if err := t.ReportJobFailure(retErrStr.Error()); err != nil {
+				retErr = fmt.Errorf("failed to report job failure: %s, original error: %s", err.Error(), retErrStr)
+			}
+		}
+	}()
+
+	if err := cfg.IsValid(); err != nil {
+		return t, err
+	}
+
+	rtcdClient, err := client.New(client.Config{
 		SiteURL:   cfg.SiteURL,
 		AuthToken: cfg.AuthToken,
 		ChannelID: cfg.CallID,
 		JobID:     cfg.TranscriptionID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create calls client: %w", err)
+		return t, err
 	}
 
-	apiClient := model.NewAPIv4Client(cfg.SiteURL)
-	apiClient.SetToken(cfg.AuthToken)
-
-	t := &Transcriber{
+	t = &Transcriber{
 		cfg:                 cfg,
-		client:              client,
+		client:              rtcdClient,
 		apiClient:           apiClient,
 		errCh:               make(chan error, 1),
 		doneCh:              make(chan struct{}),
@@ -68,7 +85,8 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (*Transcriber, error) {
 		captionsPoolQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
 		captionsPoolDoneCh:  make(chan struct{}),
 	}
-	return t, nil
+
+	return
 }
 
 func (t *Transcriber) Start(ctx context.Context) error {
