@@ -112,6 +112,18 @@ func (cfg CallTranscriberConfig) IsValidURL() error {
 		return fmt.Errorf("SiteURL parsing failed: invalid path %q", u.Path)
 	}
 
+	return nil
+}
+
+func (cfg CallTranscriberConfig) IsValid() error {
+	if cfg == (CallTranscriberConfig{}) {
+		return fmt.Errorf("config cannot be empty")
+	}
+
+	if err := cfg.IsValidURL(); err != nil {
+		return err
+	}
+
 	if cfg.CallID == "" {
 		return fmt.Errorf("CallID cannot be empty")
 	} else if !idRE.MatchString(cfg.CallID) {
@@ -128,18 +140,6 @@ func (cfg CallTranscriberConfig) IsValidURL() error {
 		return fmt.Errorf("AuthToken cannot be empty")
 	} else if !idRE.MatchString(cfg.AuthToken) {
 		return fmt.Errorf("AuthToken parsing failed")
-	}
-
-	return nil
-}
-
-func (cfg CallTranscriberConfig) IsValid() error {
-	if cfg == (CallTranscriberConfig{}) {
-		return fmt.Errorf("config cannot be empty")
-	}
-
-	if err := cfg.IsValidURL(); err != nil {
-		return err
 	}
 
 	if cfg.PostID == "" {
