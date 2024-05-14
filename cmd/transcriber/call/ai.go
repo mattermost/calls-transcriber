@@ -104,6 +104,26 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		return newPost, nil
 	}
 
+	activateAI := func(val bool) error {
+		apiURL := fmt.Sprintf("%s/plugins/%s/bot/calls/%s/activate-ai", t.apiClient.URL, pluginID, t.cfg.CallID)
+		payload, err := json.Marshal(map[string]bool{
+			"active": val,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal: %w", err)
+		}
+
+		ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
+		defer cancelCtx()
+		resp, err := t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL, payload, "")
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		return nil
+	}
+
 	ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
 	aiUser, _, err := t.apiClient.GetUserByUsername(ctx, "ai", "")
 	if err != nil {
@@ -160,6 +180,9 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 				select {
 				case speakCh <- prevMsg:
 					slog.Debug("msg sent!", slog.String("msg", prevMsg))
+					if err := activateAI(false); err != nil {
+						slog.Error("failed to send AI activity", slog.String("err", err.Error()))
+					}
 				default:
 					slog.Error("failed to write on textCh")
 				}
@@ -188,6 +211,9 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			active.Store(newTimeP(time.Now()))
 		} else {
 			active.Store(&time.Time{})
+			if err := activateAI(false); err != nil {
+				slog.Error("failed to send AI activity", slog.String("err", err.Error()))
+			}
 		}
 	}
 	go func() {
@@ -313,6 +339,10 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 					post.AddProp("activate_ai", true)
 					if _, err := postToAI(post); err != nil {
 						slog.Error("failed to post to AI", slog.String("err", err.Error()))
+					}
+
+					if err := activateAI(true); err != nil {
+						slog.Error("failed to send AI activity", slog.String("err", err.Error()))
 					}
 				} else {
 					post := &model.Post{Message: text, RootId: aiPost.Id, UserId: speakingUser.Id}

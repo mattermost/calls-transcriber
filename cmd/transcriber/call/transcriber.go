@@ -19,6 +19,7 @@ const (
 	pluginID          = "com.mattermost.calls"
 	wsEvCaption       = "custom_" + pluginID + "_caption"
 	wsEvMetric        = "custom_" + pluginID + "_metric"
+	wsEvAIActivity    = "custom_" + pluginID + "_ai_activity"
 	maxTracksContexes = 256
 )
 
