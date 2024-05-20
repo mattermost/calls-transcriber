@@ -124,6 +124,25 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		return nil
 	}
 
+	var active atomic.Pointer[time.Time]
+	active.Store(&time.Time{})
+	isActive := func() bool {
+		return !active.Load().IsZero()
+	}
+	setActive := func(val bool) {
+		if val {
+			active.Store(newTimeP(time.Now()))
+		} else {
+			active.Store(&time.Time{})
+			if err := activateAI(false); err != nil {
+				slog.Error("failed to send AI activity", slog.String("err", err.Error()))
+			}
+			if err := c.Mute(); err != nil {
+				slog.Error("failed to mute", slog.String("err", err.Error()))
+			}
+		}
+	}
+
 	ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
 	aiUser, _, err := t.apiClient.GetUserByUsername(ctx, "ai", "")
 	if err != nil {
@@ -201,21 +220,15 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		return
 	}
 
-	var active atomic.Pointer[time.Time]
-	active.Store(&time.Time{})
-	isActive := func() bool {
-		return !active.Load().IsZero()
+	if err := c.On(client.WSHostMuteEvent, func(_ any) error {
+		slog.Debug("received host mute event, deactivating")
+		setActive(false)
+		return nil
+	}); err != nil {
+		slog.Error("failed to subscribe", slog.String("err", err.Error()))
+		return
 	}
-	setActive := func(val bool) {
-		if val {
-			active.Store(newTimeP(time.Now()))
-		} else {
-			active.Store(&time.Time{})
-			if err := activateAI(false); err != nil {
-				slog.Error("failed to send AI activity", slog.String("err", err.Error()))
-			}
-		}
-	}
+
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for {
@@ -224,9 +237,6 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 				if isActive() && time.Since(*active.Load()) > 30*time.Second {
 					slog.Info("deactivating after timeout")
 					setActive(false)
-					if err := c.Mute(); err != nil {
-						slog.Error("failed to mute", slog.String("err", err.Error()))
-					}
 				}
 			case <-stopCh:
 				return
@@ -326,9 +336,6 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 				if containsString(strings.ToLower(text), aiDeactivationKeywords) {
 					slog.Debug("deactivation keyword triggered")
 					setActive(false)
-					if err := c.Mute(); err != nil {
-						slog.Error("failed to mute", slog.String("err", err.Error()))
-					}
 				}
 
 				if isActive() {

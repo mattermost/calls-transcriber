@@ -82,12 +82,8 @@ github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-2024030819125
 github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df/go.mod h1:9a5FoYxu9rPCvV4FEo0DkJSqqCZ80FCeB9Y4haBI2FQ=
 github.com/mattermost/mattermost/server/public v0.0.12 h1:iunc9q4/XkArOrndEUn73uFw6v9TOEXEtp6Nm6Iv218=
 github.com/mattermost/mattermost/server/public v0.0.12/go.mod h1:Bk+atJcELCIk9Yeq5FoqTr+gra9704+X4amrlwlTgSc=
-github.com/mattermost/rtcd v0.14.1-0.20240426225122-76b29f781d70 h1:wvwXqXDUfCK+gf7KLh0GAx1kDj6z11blpEfxtSwwgOQ=
-github.com/mattermost/rtcd v0.14.1-0.20240426225122-76b29f781d70/go.mod h1:CaDYwB/c+UC0MHs+nMZkE3p7Sd4f0Sh+66jjZNDVdRQ=
-github.com/mattermost/rtcd v0.14.1-0.20240426230630-b0e6b1c17e7a h1:wp1h3Y/9/4NWlv1xBTx41CfAwRo7ZhQAj2o1JdPB1Ic=
-github.com/mattermost/rtcd v0.14.1-0.20240426230630-b0e6b1c17e7a/go.mod h1:CaDYwB/c+UC0MHs+nMZkE3p7Sd4f0Sh+66jjZNDVdRQ=
-github.com/mattermost/rtcd v0.14.1-0.20240503205319-81a8199c0aed h1:zp84bkw3nEOnD4jazsGmySRdeGYlI75ESf5syaWlHPs=
-github.com/mattermost/rtcd v0.14.1-0.20240503205319-81a8199c0aed/go.mod h1:CaDYwB/c+UC0MHs+nMZkE3p7Sd4f0Sh+66jjZNDVdRQ=
+github.com/mattermost/rtcd v0.14.1-0.20240518004251-c446c5e256a7 h1:ua+XeW3U+Op6LWHuPKIretFKdpUvXZNhXC1aJxjWISQ=
+github.com/mattermost/rtcd v0.14.1-0.20240518004251-c446c5e256a7/go.mod h1:CaDYwB/c+UC0MHs+nMZkE3p7Sd4f0Sh+66jjZNDVdRQ=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/microcosm-cc/bluemonday v1.0.1/go.mod h1:hsXNsILzKxV+sX77C5b8FSuKF00vh2OMYv+xgHpAMF4=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
