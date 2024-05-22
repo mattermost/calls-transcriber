@@ -143,6 +143,13 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		}
 	}
 
+	var sender atomic.Pointer[webrtc.RTPSender]
+	setSender := func(s *webrtc.RTPSender) {
+		if sender.Load() == nil {
+			sender.Store(s)
+		}
+	}
+
 	ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
 	aiUser, _, err := t.apiClient.GetUserByUsername(ctx, "ai", "")
 	if err != nil {
@@ -244,6 +251,24 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 		}
 	}()
 
+	synthesizedCh, err := utils.SynthesizeText(speakCh, stopCh, t.cfg.TranscribeAPIOptions)
+	if err != nil {
+		slog.Error("failed to synthesize text", slog.String("err", err.Error()))
+		return
+	}
+
+	encodedCh, err := utils.EncodeAudio(synthesizedCh)
+	if err != nil {
+		slog.Error("failed to enclode audio", slog.String("err", err.Error()))
+		return
+	}
+
+	err = utils.TransmitAudio(encodedCh, outTrack, sender.Load, isActive, setActive)
+	if err != nil {
+		slog.Error("failed to transmit audio", slog.String("err", err.Error()))
+		return
+	}
+
 	if err := c.On(client.RTCTrackEvent, func(ctx any) error {
 		m, ok := ctx.(map[string]any)
 		if !ok {
@@ -296,24 +321,6 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 			return fmt.Errorf("failed to transcribe audio: %w", err)
 		}
 
-		synthesizedCh, err := utils.SynthesizeText(speakCh, stopCh, t.cfg.TranscribeAPIOptions)
-		if err != nil {
-			return fmt.Errorf("failed to synthesize text: %w", err)
-		}
-
-		encodedCh, err := utils.EncodeAudio(synthesizedCh)
-		if err != nil {
-			return fmt.Errorf("failed to encode audio: %w", err)
-		}
-
-		var sender *webrtc.RTPSender
-		err = utils.TransmitAudio(encodedCh, outTrack, func() *webrtc.RTPSender {
-			return sender
-		}, isActive, setActive)
-		if err != nil {
-			return fmt.Errorf("failed to transmit audio: %w", err)
-		}
-
 		go func() {
 			for text := range transcribedCh {
 				slog.Debug("transcribed: " + text)
@@ -325,10 +332,11 @@ func (t *Transcriber) summonAI(authToken string, stopCh <-chan struct{}) {
 
 				if !isActive() && containsString(strings.ToLower(text), aiActivationKeywords) {
 					slog.Debug("activation keyword triggered")
-					sender, err = c.Unmute(outTrack)
+					sender, err := c.Unmute(outTrack)
 					if err != nil {
 						slog.Error("failed to unmute", slog.String("err", err.Error()))
 					} else {
+						setSender(sender)
 						setActive(true)
 					}
 				}
