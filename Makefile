@@ -54,8 +54,8 @@ OPUS_SHA ?= "c9b32b4253be5ae63d1ff16eea06b94b5f0f2951b7a02aceef58e3a3ce49c51f"
 # ONNX Runtime
 ONNX_VERSION ?= "1.16.2"
 # Azure Speech SDK
-AZURE_SDK_VERSION ?= "1.36.0"
-AZURE_SDK_SHA ?= "9e869d95bef1c2966f4a7eb6ae07d062d19b2a671435af7f7dadca85e80ee812"
+AZURE_SDK_VERSION ?= "1.38.0"
+AZURE_SDK_SHA ?= "26bbab32e16128c02af3b0f12640b15d13d969ec6dc748153004e380ff4c69d0"
 
 ## Docker Variables
 # Docker executable

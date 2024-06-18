@@ -448,6 +448,9 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 
 func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
+	case config.TranscribeAPIAzure:
+		// Only supporting WhisperCPP live captions for the time being.
+		fallthrough
 	case config.TranscribeAPIWhisperCPP:
 		return whisper.NewContext(whisper.Config{
 			ModelFile:     filepath.Join(getModelsDir(), fmt.Sprintf("ggml-%s.bin", string(t.cfg.LiveCaptionsModelSize))),

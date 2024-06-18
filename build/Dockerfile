@@ -2,7 +2,7 @@
 # A multi stage build, with golang used as a builder
 # and debian:sid-slim as runner
 ARG GO_VERSION
-FROM --platform=$TARGETPLATFORM debian:bullseye-20240311-slim as base
+FROM --platform=$TARGETPLATFORM debian:sid-20240330-slim as base
 
 # Setup system dependencies
 WORKDIR /workdir
