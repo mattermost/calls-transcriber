@@ -258,7 +258,7 @@ func (t *Transcriber) handleClose() error {
 		trackTr, dur, err := t.transcribeTrack(ctx)
 		if err != nil {
 			slog.Error("failed to transcribe track", slog.String("trackID", ctx.trackID), slog.String("err", err.Error()))
-			continue
+			return fmt.Errorf("failed to transcribe track: %w", err)
 		}
 
 		samplesDur += dur
@@ -477,7 +477,7 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 			slog.Error("failed to transcribe audio samples",
 				slog.String("err", err.Error()),
 				slog.String("trackID", ctx.trackID))
-			continue
+			return trackTr, 0, fmt.Errorf("failed to transcribe audio samples: %w", err)
 		}
 
 		if lang != "" && trackTr.Language == "" {
@@ -515,6 +515,7 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 		return azure.NewSpeechRecognizer(azure.SpeechRecognizerConfig{
 			SpeechKey:    speechKey,
 			SpeechRegion: speechRegion,
+			DataDir:      getDataDir(),
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

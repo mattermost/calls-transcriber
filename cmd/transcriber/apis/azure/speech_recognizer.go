@@ -3,6 +3,7 @@ package azure
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
@@ -22,6 +23,7 @@ type SpeechRecognizerConfig struct {
 	SpeechKey    string
 	SpeechRegion string
 	Language     string
+	DataDir      string
 }
 
 func (c SpeechRecognizerConfig) IsValid() error {
@@ -31,6 +33,10 @@ func (c SpeechRecognizerConfig) IsValid() error {
 
 	if c.SpeechRegion == "" {
 		return fmt.Errorf("invalid SpeechRegion: should not be empty")
+	}
+
+	if c.DataDir == "" {
+		return fmt.Errorf("invalid DataDir: should not be empty")
 	}
 
 	return nil
@@ -89,6 +95,9 @@ func NewSpeechRecognizer(cfg SpeechRecognizerConfig) (*SpeechRecognizer, error) 
 	speechConfig, err := speech.NewSpeechConfigFromSubscription(cfg.SpeechKey, cfg.SpeechRegion)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create speech config: %w", err)
+	}
+	if err := speechConfig.SetProperty(common.SpeechLogFilename, filepath.Join(cfg.DataDir, "azure.log")); err != nil {
+		return nil, fmt.Errorf("failed to set log property: %w", err)
 	}
 
 	speechRecognizer, audioConfig, audioStream, err := initSpeechRecognizer(speechConfig)
