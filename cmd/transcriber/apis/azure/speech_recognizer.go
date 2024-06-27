@@ -171,6 +171,13 @@ func (s *SpeechRecognizer) TranscribeAsync(samplesCh <-chan []float32) (<-chan t
 func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, string, error) {
 	// TODO: we should likely re-use the same session throughout a track transcription to optimize
 	// resources a bit.
+	//
+	// NOTE: the underlying Golang wrapper is currently a bit bugged. Re-using the client is recommended
+	// but it doesn't work properly because everything relies on a stream which can't be flushed which can
+	// lead to data loss. And if we close the stream then we need to re-initialize everything like we do.
+	//
+	// A better solution may be to extend the Transcriber interface and pass an audio reader to this method
+	// instead of the chunks we create since we are dealing with post-transcript.
 
 	inputDuration := time.Duration(float32(len(samples))/float32(audioSampleRate)) * time.Second
 
