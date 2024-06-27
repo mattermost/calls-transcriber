@@ -8,6 +8,8 @@ WHISPER_SHA=$4
 MODELS=$5
 ONNX_VERSION=$6
 TARGET_ARCH=$7
+AZURE_SDK_VERSION=$8
+AZURE_SDK_SHA=$9
 ONNX_ARCH=x64
 ONNX_SHA=70c769771ad4b6d63b87ca1f62d3f11e998ea0b9d738d6bbdd6a5e6d8c1deb31
 if [ "$TARGET_ARCH" == "arm64" ]; then
@@ -39,4 +41,8 @@ cd /tmp && \
 wget https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION}.tgz && \
 echo "${ONNX_SHA} onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION}.tgz" | sha256sum --check && \
 tar xf onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION}.tgz && \
-mv onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION} onnxruntime-linux-${ONNX_VERSION}
+mv onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION} onnxruntime-linux-${ONNX_VERSION} && \
+wget https://csspeechstorage.blob.core.windows.net/drop/${AZURE_SDK_VERSION}/SpeechSDK-Linux-${AZURE_SDK_VERSION}.tar.gz && \
+echo "${AZURE_SDK_SHA} SpeechSDK-Linux-${AZURE_SDK_VERSION}.tar.gz" | sha256sum --check && \
+tar xf SpeechSDK-Linux-${AZURE_SDK_VERSION}.tar.gz && \
+mv /tmp/SpeechSDK-Linux-${AZURE_SDK_VERSION}/lib/x64 /tmp/SpeechSDK-Linux-${AZURE_SDK_VERSION}/lib/amd64
