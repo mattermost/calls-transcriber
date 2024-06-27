@@ -340,7 +340,7 @@ go-build-docker: # to build binaries under a controlled docker dedicated go cont
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	$(DOCKER_IMAGE_GO) \
-	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} ${WHISPER_MODELS} ${ONNX_VERSION} ${ARCH} || ${FAIL}
+	/bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} ${WHISPER_MODELS} ${ONNX_VERSION} ${ARCH} ${AZURE_SDK_VERSION} ${AZURE_SDK_SHA} || ${FAIL}
 	@$(OK) go build docker
 
 .PHONY: go-run
