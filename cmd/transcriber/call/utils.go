@@ -19,33 +19,51 @@ import (
 )
 
 const (
-	httpRequestTimeout         = 5 * time.Second
-	httpUploadTimeout          = 10 * time.Second
-	uploadRetryAttemptWaitTime = 5 * time.Second
+	httpRequestTimeout          = 5 * time.Second
+	httpUploadTimeout           = 10 * time.Second
+	uploadRetryAttemptWaitTime  = 5 * time.Second
+	getUserRetryAttemptWaitTime = time.Second
 )
 
 var (
 	filenameSanitizationRE = regexp.MustCompile(`[\\:*?\"<>|\n\s/]`)
-	maxUploadRetryAttempts = 5
+	maxAPIRetryAttempts    = 5
 )
 
 func (t *Transcriber) getUserForSession(sessionID string) (*model.User, error) {
-	ctx, cancelFn := context.WithTimeout(context.Background(), httpRequestTimeout)
-	defer cancelFn()
+	getUser := func() (*model.User, error) {
+		ctx, cancelFn := context.WithTimeout(context.Background(), httpRequestTimeout)
+		defer cancelFn()
 
-	url := fmt.Sprintf("%s/plugins/%s/bot/calls/%s/sessions/%s/profile", t.cfg.SiteURL, pluginID, t.cfg.CallID, sessionID)
-	resp, err := t.apiClient.DoAPIRequest(ctx, http.MethodGet, url, "", "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch user profile: %w", err)
+		url := fmt.Sprintf("%s/plugins/%s/bot/calls/%s/sessions/%s/profile", t.cfg.SiteURL, pluginID, t.cfg.CallID, sessionID)
+		resp, err := t.apiClient.DoAPIRequest(ctx, http.MethodGet, url, "", "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch user profile: %w", err)
+		}
+		defer resp.Body.Close()
+
+		var user *model.User
+		if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user profile: %w", err)
+		}
+
+		return user, nil
 	}
-	defer resp.Body.Close()
 
-	var user *model.User
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal user profile: %w", err)
+	for i := 0; i < maxAPIRetryAttempts; i++ {
+		user, err := getUser()
+		if err == nil {
+			return user, nil
+		}
+
+		slog.Error("getUserForSession failed",
+			slog.String("err", err.Error()),
+			slog.Duration("reattempt_time", getUserRetryAttemptWaitTime))
+
+		time.Sleep(getUserRetryAttemptWaitTime)
 	}
 
-	return user, nil
+	return nil, fmt.Errorf("failed to get user for call: max attempts reached")
 }
 
 func getDataDir() string {
@@ -64,7 +82,7 @@ func getModelsDir() string {
 
 func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err error) {
 	var fname string
-	for i := 0; i < maxUploadRetryAttempts; i++ {
+	for i := 0; i < maxAPIRetryAttempts; i++ {
 		if i > 0 {
 			slog.Error("getFilenameForCall failed",
 				slog.String("err", err.Error()),
@@ -129,10 +147,10 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/plugins/%s/bot", t.apiClient.URL, pluginID)
+	apiURL := fmt.Sprintf("%s/plugins/%s/bot", t.apiURL, pluginID)
 
 	var lastErr error
-	for i := 0; i < maxUploadRetryAttempts; i++ {
+	for i := 0; i < maxAPIRetryAttempts; i++ {
 		if i > 0 {
 			slog.Error("publishTranscription failed", slog.Duration("reattempt_time", uploadRetryAttemptWaitTime))
 			time.Sleep(uploadRetryAttemptWaitTime)

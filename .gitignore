@@ -7,5 +7,8 @@ dist/
 # temporary track files
 tracks/
 
+# go tooling
+bin/
+
 .config.env*
 *.vim
