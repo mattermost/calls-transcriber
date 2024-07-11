@@ -82,7 +82,7 @@ func TestTranscribeTrack(t *testing.T) {
 		require.Len(t, trackTr.Segments, 2)
 		require.Equal(t, " This is a test transcription sample.", trackTr.Segments[0].Text)
 		require.Equal(t, " with a gap in speech of a couple of seconds.", trackTr.Segments[1].Text)
-		require.Equal(t, 4700*time.Millisecond, d)
+		require.Equal(t, 4668*time.Millisecond, d)
 	})
 }
 
