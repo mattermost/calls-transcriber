@@ -393,7 +393,6 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 	sd, err := speech.NewDetector(speech.DetectorConfig{
 		ModelPath:   filepath.Join(getModelsDir(), "silero_vad.onnx"),
 		SampleRate:  trackOutAudioRate,
-		WindowSize:  1536,
 		Threshold:   0.5,
 		SpeechPadMs: 100,
 
