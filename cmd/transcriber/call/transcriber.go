@@ -3,7 +3,9 @@ package call
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,11 +23,18 @@ const (
 	maxTracksContexes = 256
 )
 
+type APIClient interface {
+	DoAPIRequest(ctx context.Context, method, url, data, etag string) (*http.Response, error)
+	DoAPIRequestBytes(ctx context.Context, method, url string, data []byte, etag string) (*http.Response, error)
+	DoAPIRequestReader(ctx context.Context, method, url string, data io.Reader, headers map[string]string) (*http.Response, error)
+}
+
 type Transcriber struct {
 	cfg config.CallTranscriberConfig
 
 	client    *client.Client
-	apiClient *model.Client4
+	apiClient APIClient
+	apiURL    string
 
 	errCh        chan error
 	doneCh       chan struct{}
@@ -50,6 +59,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 	t = &Transcriber{
 		cfg:       cfg,
 		apiClient: apiClient,
+		apiURL:    apiClient.URL,
 	}
 
 	defer func() {
@@ -75,16 +85,12 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 		return t, err
 	}
 
-	t = &Transcriber{
-		cfg:                 cfg,
-		client:              rtcdClient,
-		apiClient:           apiClient,
-		errCh:               make(chan error, 1),
-		doneCh:              make(chan struct{}),
-		trackCtxs:           make(chan trackContext, maxTracksContexes),
-		captionsPoolQueueCh: make(chan captionPackage, transcriberQueueChBuffer),
-		captionsPoolDoneCh:  make(chan struct{}),
-	}
+	t.client = rtcdClient
+	t.errCh = make(chan error, 1)
+	t.doneCh = make(chan struct{})
+	t.trackCtxs = make(chan trackContext, maxTracksContexes)
+	t.captionsPoolQueueCh = make(chan captionPackage, transcriberQueueChBuffer)
+	t.captionsPoolDoneCh = make(chan struct{})
 
 	return
 }

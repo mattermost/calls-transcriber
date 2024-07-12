@@ -119,6 +119,10 @@ GO_TEST_OPTS                 += -mod=readonly -failfast -race
 # Temporary folder to output compiled binaries artifacts
 GO_OUT_BIN_DIR               := ./dist
 
+# We need to export GOBIN to allow it to be set
+# for processes spawned from the Makefile
+export GOBIN ?= $(PWD)/bin
+
 ## Github Variables
 # A github access token that provides access to upload artifacts under releases
 GITHUB_TOKEN                 ?= a_token
@@ -414,3 +418,8 @@ clean: ## to clean-up
 	@$(INFO) cleaning /${GO_OUT_BIN_DIR} folder...
 	$(AT)rm -rf ${GO_OUT_BIN_DIR} || ${FAIL}
 	@$(OK) cleaning /${GO_OUT_BIN_DIR} folder
+
+.PHONY: mocks
+mocks: ## Create mock files
+	$(GO) install github.com/vektra/mockery/v2/...@v2.40.3
+	$(GOBIN)/mockery

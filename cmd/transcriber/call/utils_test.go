@@ -128,7 +128,7 @@ All right, we should be recording. Welcome everyone, developers meeting for Dece
 	os.Setenv("DATA_DIR", filepath.Dir(vttFile.Name()))
 	defer os.Setenv("DATA_DIR", dataDir)
 
-	maxUploadRetryAttempts = 2
+	maxAPIRetryAttempts = 2
 
 	t.Run("upload session creation failure", func(t *testing.T) {
 		middlewares = []middleware{
