@@ -243,7 +243,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 				}
 				if err := t.client.SendWS(wsEvCaption, public.CaptionMsg{
 					SessionID:     ctx.sessionID,
-					UserID:        ctx.user.Id,
 					Text:          text,
 					NewAudioLenMs: float64(newAudioLenMs),
 				}, false); err != nil {

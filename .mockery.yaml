@@ -1,0 +1,9 @@
+quiet: False
+with-expecter: true
+dir: "cmd/transcriber/mocks/{{.PackagePath}}"
+packages:
+    github.com/mattermost/calls-transcriber/cmd/transcriber/call:
+        config:
+        interfaces:
+            APIClient:
+

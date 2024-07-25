@@ -11,7 +11,7 @@ import (
 
 func (t *Transcriber) postJobStatus(status public.JobStatus) error {
 	apiURL := fmt.Sprintf("%s/plugins/%s/bot/calls/%s/jobs/%s/status",
-		t.apiClient.URL, pluginID, t.cfg.CallID, t.cfg.TranscriptionID)
+		t.apiURL, pluginID, t.cfg.CallID, t.cfg.TranscriptionID)
 
 	payload, err := json.Marshal(&status)
 	if err != nil {

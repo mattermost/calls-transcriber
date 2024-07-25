@@ -4,18 +4,24 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/ogg"
 
+	mocks "github.com/mattermost/calls-transcriber/cmd/transcriber/mocks/github.com/mattermost/calls-transcriber/cmd/transcriber/call"
+
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
+
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,7 +87,7 @@ func TestTranscribeTrack(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, trackTr.Segments, 2)
 		require.Equal(t, " This is a test transcription sample.", trackTr.Segments[0].Text)
-		require.Equal(t, " with a gap in speech of a couple of seconds.", trackTr.Segments[1].Text)
+		require.Equal(t, " With a gap in speech of a couple of seconds.", trackTr.Segments[1].Text)
 		require.Equal(t, 4668*time.Millisecond, d)
 	})
 }
@@ -103,6 +109,17 @@ func TestProcessLiveTrack(t *testing.T) {
 	t.Run("synchronization", func(t *testing.T) {
 		t.Run("empty payloads", func(t *testing.T) {
 			tr := setupTranscriberForTest(t)
+
+			mockClient := &mocks.MockAPIClient{}
+			tr.apiClient = mockClient
+
+			defer mockClient.AssertExpectations(t)
+
+			mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
+				"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
+				Return(&http.Response{
+					Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
+				}, nil).Once()
 
 			track := &trackRemoteMock{
 				id: "trackID",
@@ -158,7 +175,6 @@ func TestProcessLiveTrack(t *testing.T) {
 			}
 
 			sessionID := "sessionID"
-			user := &model.User{Id: "userID", Username: "testuser"}
 
 			dataDir := os.Getenv("DATA_DIR")
 			os.Setenv("DATA_DIR", os.TempDir())
@@ -166,11 +182,11 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-			tr.processLiveTrack(track, sessionID, user)
+			tr.processLiveTrack(track, sessionID)
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.id)))
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("userID_%s.ogg", track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -205,6 +221,17 @@ func TestProcessLiveTrack(t *testing.T) {
 
 		t.Run("out of order packets", func(t *testing.T) {
 			tr := setupTranscriberForTest(t)
+
+			mockClient := &mocks.MockAPIClient{}
+			tr.apiClient = mockClient
+
+			defer mockClient.AssertExpectations(t)
+
+			mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
+				"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
+				Return(&http.Response{
+					Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
+				}, nil).Once()
 
 			track := &trackRemoteMock{
 				id: "trackID",
@@ -253,7 +280,6 @@ func TestProcessLiveTrack(t *testing.T) {
 			}
 
 			sessionID := "sessionID"
-			user := &model.User{Id: "userID", Username: "testuser"}
 
 			dataDir := os.Getenv("DATA_DIR")
 			os.Setenv("DATA_DIR", os.TempDir())
@@ -261,11 +287,11 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-			tr.processLiveTrack(track, sessionID, user)
+			tr.processLiveTrack(track, sessionID)
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.id)))
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("userID_%s.ogg", track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -299,6 +325,17 @@ func TestProcessLiveTrack(t *testing.T) {
 
 		t.Run("timestamp wrap around", func(t *testing.T) {
 			tr := setupTranscriberForTest(t)
+
+			mockClient := &mocks.MockAPIClient{}
+			tr.apiClient = mockClient
+
+			defer mockClient.AssertExpectations(t)
+
+			mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
+				"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
+				Return(&http.Response{
+					Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
+				}, nil).Once()
 
 			track := &trackRemoteMock{
 				id: "trackID",
@@ -347,7 +384,6 @@ func TestProcessLiveTrack(t *testing.T) {
 			}
 
 			sessionID := "sessionID"
-			user := &model.User{Id: "userID", Username: "testuser"}
 
 			dataDir := os.Getenv("DATA_DIR")
 			os.Setenv("DATA_DIR", os.TempDir())
@@ -355,11 +391,11 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-			tr.processLiveTrack(track, sessionID, user)
+			tr.processLiveTrack(track, sessionID)
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.id)))
+			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("userID_%s.ogg", track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -394,5 +430,32 @@ func TestProcessLiveTrack(t *testing.T) {
 			_, _, err = oggReader.ParseNextPage()
 			require.Equal(t, io.EOF, err)
 		})
+	})
+
+	t.Run("should reattempt getUserForSession on failure", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+
+		mockClient := &mocks.MockAPIClient{}
+		tr.apiClient = mockClient
+
+		defer mockClient.AssertExpectations(t)
+
+		mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
+			"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
+			Return(nil, fmt.Errorf("failed")).Once()
+
+		mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
+			"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
+			Return(&http.Response{
+				Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
+			}, nil).Once()
+
+		tr.liveTracksWg.Add(1)
+		tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
+		tr.processLiveTrack(&trackRemoteMock{
+			id: "trackID",
+		}, "sessionID")
+		close(tr.trackCtxs)
+		require.Len(t, tr.trackCtxs, 1)
 	})
 }

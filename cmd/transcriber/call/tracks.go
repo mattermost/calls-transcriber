@@ -73,13 +73,8 @@ func (t *Transcriber) handleTrack(ctx any) error {
 		return nil
 	}
 
-	user, err := t.getUserForSession(sessionID)
-	if err != nil {
-		return fmt.Errorf("failed to get user for session: %w", err)
-	}
-
 	t.liveTracksWg.Add(1)
-	go t.processLiveTrack(track, sessionID, user)
+	go t.processLiveTrack(track, sessionID)
 
 	return nil
 }
@@ -87,13 +82,19 @@ func (t *Transcriber) handleTrack(ctx any) error {
 // processLiveTrack saves the content of a voice track to a file for later processing.
 // This involves muxing the raw Opus packets into a OGG file with the
 // timings adjusted to account for any potential gaps due to mute/unmute sequences.
-func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string, user *model.User) {
+func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 	ctx := trackContext{
 		trackID:   track.ID(),
 		sessionID: sessionID,
-		user:      user,
-		filename:  filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.ID())),
 	}
+
+	user, err := t.getUserForSession(ctx.sessionID)
+	if err != nil {
+		slog.Error("failed to get user for session", slog.String("err", err.Error()), slog.String("trackID", ctx.trackID))
+		return
+	}
+	ctx.user = user
+	ctx.filename = filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.ID()))
 
 	slog.Debug("processing voice track",
 		slog.String("username", user.Username),

@@ -45,8 +45,8 @@ endif
 
 ## CGO dependencies
 # Whisper.cpp
-WHISPER_VERSION ?= "1.4.0"
-WHISPER_SHA ?= "b2e34e65777033584fa6769a366cdb0228bc5c7da81e58a5e8dc0ce94d0fb54e"
+WHISPER_VERSION ?= "1.6.2"
+WHISPER_SHA ?= "da7988072022acc3cfa61b370b3c51baad017f1900c3dc4e68cb276499f66894"
 WHISPER_MODELS ?= "tiny base small"
 # Opus
 OPUS_VERSION ?= "1.4"
@@ -118,6 +118,10 @@ GO_BUILD_OPTS                += -mod=readonly -trimpath -buildmode=pie
 GO_TEST_OPTS                 += -mod=readonly -failfast -race
 # Temporary folder to output compiled binaries artifacts
 GO_OUT_BIN_DIR               := ./dist
+
+# We need to export GOBIN to allow it to be set
+# for processes spawned from the Makefile
+export GOBIN ?= $(PWD)/bin
 
 ## Github Variables
 # A github access token that provides access to upload artifacts under releases
@@ -414,3 +418,8 @@ clean: ## to clean-up
 	@$(INFO) cleaning /${GO_OUT_BIN_DIR} folder...
 	$(AT)rm -rf ${GO_OUT_BIN_DIR} || ${FAIL}
 	@$(OK) cleaning /${GO_OUT_BIN_DIR} folder
+
+.PHONY: mocks
+mocks: ## Create mock files
+	$(GO) install github.com/vektra/mockery/v2/...@v2.40.3
+	$(GOBIN)/mockery
