@@ -54,7 +54,6 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		ModelPath:  filepath.Join(getModelsDir(), "silero_vad.onnx"),
 		SampleRate: trackOutAudioRate,
 
-		WindowSize:           vadWindowSizeInSamples,
 		Threshold:            vadThreshold,
 		MinSilenceDurationMs: vadMinSilenceDurationMs,
 		SpeechPadMs:          vadSpeechPadMs,
