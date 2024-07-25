@@ -96,6 +96,9 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 	ctx.user = user
 	ctx.filename = filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.ID()))
 
+	var prevArrivalTime time.Time
+	var prevRTPTimestamp uint32
+
 	slog.Debug("processing voice track",
 		slog.String("username", user.Username),
 		slog.String("sessionID", sessionID),
@@ -103,11 +106,18 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 	slog.Debug("start reading loop for track", slog.String("trackID", ctx.trackID))
 	defer func() {
 		slog.Debug("exiting reading loop for track", slog.String("trackID", ctx.trackID))
-		select {
-		case t.trackCtxs <- ctx:
-		default:
-			slog.Error("failed to enqueue track context", slog.Any("ctx", ctx))
+
+		// Only send the track context if we processed at least one audio packet.
+		if !prevArrivalTime.IsZero() {
+			select {
+			case t.trackCtxs <- ctx:
+			default:
+				slog.Error("failed to enqueue track context", slog.Any("ctx", ctx))
+			}
+		} else {
+			slog.Debug("nothing to send", slog.String("trackID", ctx.trackID))
 		}
+
 		t.liveTracksWg.Done()
 	}()
 
@@ -131,8 +141,6 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 	}
 
 	// Read track audio:
-	var prevArrivalTime time.Time
-	var prevRTPTimestamp uint32
 	for {
 		pkt, _, readErr := track.ReadRTP()
 		if readErr != nil {
@@ -181,7 +189,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 		}
 
 		var gap uint64
-		if ctx.startTS == 0 {
+		if prevArrivalTime.IsZero() {
 			ctx.startTS = time.Since(*t.startTime.Load()).Milliseconds()
 			slog.Debug("start offset for track",
 				slog.Duration("offset", time.Duration(ctx.startTS)*time.Millisecond),
@@ -363,6 +371,7 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 		if err != nil {
 			slog.Error("failed to decode audio data",
 				slog.String("err", err.Error()),
+				slog.Any("data", data),
 				slog.String("trackID", ctx.trackID))
 		}
 
@@ -419,6 +428,12 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 
 	var speechSamples []trackTimedSamples
 	for _, ts := range samples {
+		if len(ts.pcm) == 0 {
+			slog.Warn("unexpected empty audio samples",
+				slog.String("trackID", ctx.trackID))
+			continue
+		}
+
 		// We need to reset the speech detector's state from one chunk of samples
 		// to the next.
 		if err := sd.Reset(); err != nil {
