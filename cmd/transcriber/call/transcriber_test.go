@@ -48,6 +48,16 @@ func setupTranscriberForTest(t *testing.T) *Transcriber {
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
+	dir, err := os.MkdirTemp("", "data")
+	if err != nil {
+		require.NoError(t, err)
+	}
+	os.Setenv("DATA_DIR", dir)
+	t.Cleanup(func() {
+		os.Unsetenv("DATA_DIR")
+		os.RemoveAll(dir)
+	})
+
 	return tr
 }
 
@@ -176,10 +186,6 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			sessionID := "sessionID"
 
-			dataDir := os.Getenv("DATA_DIR")
-			os.Setenv("DATA_DIR", os.TempDir())
-			defer os.Setenv("DATA_DIR", dataDir)
-
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
 			tr.processLiveTrack(track, sessionID)
@@ -281,10 +287,6 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			sessionID := "sessionID"
 
-			dataDir := os.Getenv("DATA_DIR")
-			os.Setenv("DATA_DIR", os.TempDir())
-			defer os.Setenv("DATA_DIR", dataDir)
-
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
 			tr.processLiveTrack(track, sessionID)
@@ -385,10 +387,6 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			sessionID := "sessionID"
 
-			dataDir := os.Getenv("DATA_DIR")
-			os.Setenv("DATA_DIR", os.TempDir())
-			defer os.Setenv("DATA_DIR", dataDir)
-
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
 			tr.processLiveTrack(track, sessionID)
@@ -450,12 +448,117 @@ func TestProcessLiveTrack(t *testing.T) {
 				Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
 			}, nil).Once()
 
+		track := &trackRemoteMock{
+			id: "trackID",
+		}
+
+		pkts := []*rtp.Packet{
+			{
+				Header: rtp.Header{
+					Timestamp: 1000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 2000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 3000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 4000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+		}
+
+		var i int
+		track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
+			if i >= len(pkts) {
+				return nil, nil, io.EOF
+			}
+			defer func() { i++ }()
+			return pkts[i], nil, nil
+		}
+
 		tr.liveTracksWg.Add(1)
 		tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-		tr.processLiveTrack(&trackRemoteMock{
-			id: "trackID",
-		}, "sessionID")
+		tr.processLiveTrack(track, "sessionID")
+
 		close(tr.trackCtxs)
 		require.Len(t, tr.trackCtxs, 1)
+	})
+
+	t.Run("should not queue contexes with no samples", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+
+		mockClient := &mocks.MockAPIClient{}
+		tr.apiClient = mockClient
+
+		defer mockClient.AssertExpectations(t)
+
+		mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
+			"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
+			Return(&http.Response{
+				Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
+			}, nil).Once()
+
+		track := &trackRemoteMock{
+			id: "trackID",
+		}
+
+		pkts := []*rtp.Packet{
+			{
+				Header: rtp.Header{
+					Timestamp: 1000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 2000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 3000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+			{
+				Header: rtp.Header{
+					Timestamp: 4000,
+				},
+				Payload: []byte{0x45, 0x45, 0x45},
+			},
+		}
+
+		var i int
+		track.readRTP = func() (*rtp.Packet, interceptor.Attributes, error) {
+			if i >= len(pkts) {
+				return nil, nil, io.EOF
+			}
+
+			defer func() { i++ }()
+
+			if i == 3 {
+				time.Sleep(2 * time.Second)
+			}
+
+			return pkts[i], nil, nil
+		}
+
+		tr.liveTracksWg.Add(1)
+		tr.processLiveTrack(track, "sessionID")
+		close(tr.trackCtxs)
+		require.Empty(t, tr.trackCtxs)
 	})
 }
