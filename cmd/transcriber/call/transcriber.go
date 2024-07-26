@@ -143,7 +143,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 
 		if jobID == t.cfg.TranscriptionID {
 			slog.Info("received job stop event, exiting")
-			go t.done()
+			go t.client.Close()
 		}
 
 		return nil
