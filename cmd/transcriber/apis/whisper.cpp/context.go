@@ -55,10 +55,9 @@ func (c Config) IsValid() error {
 }
 
 type Context struct {
-	cfg     Config
-	ctx     *C.struct_whisper_context
-	cparams C.struct_whisper_context_params
-	params  C.struct_whisper_full_params
+	cfg    Config
+	ctx    *C.struct_whisper_context
+	params C.struct_whisper_full_params
 }
 
 func NewContext(cfg Config) (*Context, error) {
@@ -77,8 +76,9 @@ func NewContext(cfg Config) (*Context, error) {
 	path := C.CString(cfg.ModelFile)
 	defer C.free(unsafe.Pointer(path))
 
-	c.cparams = C.whisper_context_default_params()
-	c.ctx = C.whisper_init_from_file_with_params(path, c.cparams)
+	cparams := C.whisper_context_default_params()
+	cparams.use_gpu = C.bool(false)
+	c.ctx = C.whisper_init_from_file_with_params(path, cparams)
 	if c.ctx == nil {
 		return nil, fmt.Errorf("failed to load model file")
 	}
