@@ -1,6 +1,6 @@
 module github.com/mattermost/calls-transcriber
 
-go 1.21.4
+go 1.21.12
 
 require (
 	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
