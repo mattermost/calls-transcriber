@@ -1,6 +1,7 @@
 package azure
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -224,7 +225,7 @@ func (s *SpeechRecognizer) Transcribe(samples []float32) ([]transcribe.Segment, 
 		if event.Reason == common.EndOfStream {
 			close(eosCh)
 		} else if event.Reason == common.Error {
-			errCh <- fmt.Errorf(event.ErrorDetails)
+			errCh <- errors.New(event.ErrorDetails)
 		}
 	})
 
