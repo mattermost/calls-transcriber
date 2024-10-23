@@ -45,8 +45,8 @@ endif
 
 ## CGO dependencies
 # Whisper.cpp
-WHISPER_VERSION ?= "1.6.2"
-WHISPER_SHA ?= "da7988072022acc3cfa61b370b3c51baad017f1900c3dc4e68cb276499f66894"
+WHISPER_VERSION ?= "1.7.1"
+WHISPER_SHA ?= "97f19a32212f2f215e538ee37a16ff547aaebc54817bd8072034e02466ce6d55"
 WHISPER_MODELS ?= "tiny base small"
 # Opus
 OPUS_VERSION ?= "1.4"
