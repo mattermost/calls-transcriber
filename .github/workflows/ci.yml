@@ -2,12 +2,9 @@ on: [push]
 name: CI
 jobs:
   lint:
-    env:
-      GOPATH: ${{ github.workspace }}
-
     defaults:
       run:
-        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+        working-directory: ${{ github.workspace }}/src/github.com/${{ github.repository }}
 
     runs-on: ubuntu-latest
 
@@ -15,23 +12,15 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
-    - name: Install Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.mod
-        cache-dependency-path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.sum
+        path: ${{ github.workspace }}/src/github.com/${{ github.repository }}
     - name: Lint code
       run: |
         make go-lint
 
   test:
-    env:
-      GOPATH: ${{ github.workspace }}
-
     defaults:
       run:
-        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+        working-directory: ${{ github.workspace }}/src/github.com/${{ github.repository }}
 
     runs-on: ubuntu-latest
 
@@ -39,12 +28,7 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
-    - name: Install Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.mod
-        cache-dependency-path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.sum
+        path: ${{ github.workspace }}/src/github.com/${{ github.repository }}
     - name: Execute Tests
       run: |
         go mod download

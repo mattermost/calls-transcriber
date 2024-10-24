@@ -2,15 +2,15 @@
 # A multi stage build, with golang used as a builder
 # and debian:sid-slim as runner
 ARG GO_VERSION
-FROM --platform=$TARGETPLATFORM debian:bookworm-20240612-slim as base
+FROM --platform=$TARGETPLATFORM debian:bookworm-20240612-slim AS base
 
 # Setup system dependencies
 WORKDIR /workdir
 
-# Install TLS certificates
+# Install TLS certificates and libgomp
 # hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install --no-install-recommends -y ca-certificates && \
+    apt-get install --no-install-recommends -y ca-certificates libgomp1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -18,7 +18,12 @@ RUN apt-get update && \
 RUN groupadd -r calls && useradd -mr -g calls calls
 
 ARG GO_VERSION
-FROM --platform=$TARGETPLATFORM golang:${GO_VERSION}-bookworm as builder
+FROM --platform=$TARGETPLATFORM golang:${GO_VERSION}-bookworm AS builder
+# Install patch
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y patch
+
 ARG TARGETOS
 ARG TARGETARCH
 ARG GO_BUILD_PLATFORMS=${TARGETOS}-${TARGETARCH}
@@ -37,7 +42,7 @@ ARG AZURE_SDK_SHA
 # We first copy just the build directory so that we can properly cache dependencies which can take a while to download.
 COPY ./build /src/build
 WORKDIR /src
-RUN /bin/bash ./build/prepare_deps.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "${WHISPER_MODELS}" ${ONNX_VERSION} ${TARGETARCH} ${AZURE_SDK_VERSION} ${AZURE_SDK_SHA}
+RUN /bin/bash ./build/prepare_deps.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "${WHISPER_MODELS}" ${ONNX_VERSION} ${TARGETARCH} ${AZURE_SDK_VERSION} ${AZURE_SDK_SHA} "true"
 
 COPY . /src
 RUN /bin/bash ./build/build.sh ${OPUS_VERSION} ${OPUS_SHA} ${WHISPER_VERSION} ${WHISPER_SHA} "${WHISPER_MODELS}" ${ONNX_VERSION} ${TARGETARCH} ${AZURE_SDK_VERSION} ${AZURE_SDK_SHA}
