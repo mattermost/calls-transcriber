@@ -36,7 +36,7 @@ wget https://github.com/ggerganov/whisper.cpp/archive/refs/tags/v${WHISPER_VERSI
 echo "${WHISPER_SHA} v${WHISPER_VERSION}.tar.gz" | sha256sum --check && \
 tar xf v${WHISPER_VERSION}.tar.gz && \
 cd whisper.cpp-${WHISPER_VERSION} && \
-[[ "$TARGET_ARCH" == "amd64" ]] && [[ "$IS_BUILD" == "true" ]] && echo "Patching Whisper.CPP Makefile" && patch -p1 Makefile /src/build/whisper.patch && \
+[[ "$TARGET_ARCH" == 'amd64' ]] && [[ "$IS_BUILD" == 'true' ]] && echo "Patching Whisper.CPP Makefile" && patch -p1 Makefile /src/build/whisper.patch && \
 for model in ${MODELS}; do ./models/download-ggml-model.sh "${model}"; done && \
 make -j4 libwhisper.a UNAME_M=${UNAME_M} && \
 cd /tmp && \
