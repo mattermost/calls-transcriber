@@ -10,6 +10,7 @@ ONNX_VERSION=$6
 TARGET_ARCH=$7
 AZURE_SDK_VERSION=$8
 AZURE_SDK_SHA=$9
+IS_BUILD=${10}
 ONNX_ARCH=x64
 ONNX_SHA=a0994512ec1e1debc00c18bfc7a5f16249f6ebd6a6128ff2034464cc380ea211
 if [ "$TARGET_ARCH" == "arm64" ]; then
@@ -35,6 +36,7 @@ wget https://github.com/ggerganov/whisper.cpp/archive/refs/tags/v${WHISPER_VERSI
 echo "${WHISPER_SHA} v${WHISPER_VERSION}.tar.gz" | sha256sum --check && \
 tar xf v${WHISPER_VERSION}.tar.gz && \
 cd whisper.cpp-${WHISPER_VERSION} && \
+([[ "$TARGET_ARCH" == "amd64" ]] && [[ "$IS_BUILD" == "true" ]] && echo "Patching Whisper.CPP Makefile" && patch -p1 Makefile /src/build/whisper.patch) || true && \
 for model in ${MODELS}; do ./models/download-ggml-model.sh "${model}"; done && \
 make -j4 libwhisper.a UNAME_M=${UNAME_M} && \
 cd /tmp && \

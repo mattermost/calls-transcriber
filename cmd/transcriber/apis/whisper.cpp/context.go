@@ -1,6 +1,6 @@
 package whisper
 
-// #cgo linux LDFLAGS: -l:libwhisper.a -lm -lstdc++
+// #cgo linux LDFLAGS: -l:libwhisper.a -lm -lstdc++ -fopenmp
 // #cgo darwin LDFLAGS: -lwhisper -lstdc++ -framework Accelerate
 // #include <whisper.h>
 // #include <stdlib.h>
