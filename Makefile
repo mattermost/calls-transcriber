@@ -190,12 +190,6 @@ test: go-test ## to test
 
 docker-build: ## to build the docker image
 	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION} for ${DOCKER_BUILD_PLATFORMS}
-ifeq ($(DOCKER_BUILDER_MISSING),1)
-ifeq ($(CI),true)
-	@$(INFO) Creating ${DOCKER_BUILDER} builder
-	$(AT)$(DOCKER) buildx create --name ${DOCKER_BUILDER} --use
-endif
-endif
 	$(AT)$(DOCKER) buildx build \
 	--platform ${DOCKER_BUILD_PLATFORMS} \
 	--output=type=${DOCKER_BUILD_OUTPUT_TYPE} \
