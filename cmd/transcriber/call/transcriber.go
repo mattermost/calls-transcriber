@@ -115,7 +115,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 
 	var startOnce sync.Once
 	startedCh := make(chan struct{})
-	t.client.On(client.WSCallRecordingState, func(ctx any) error {
+	t.client.On(client.WSCallJobStateEvent, func(ctx any) error {
 		if recState, ok := ctx.(client.CallJobState); ok && recState.StartAt > 0 {
 			slog.Debug("received call recording state", slog.Any("jobState", recState))
 

@@ -3,13 +3,14 @@ package call
 import (
 	"errors"
 	"fmt"
-	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"io"
 	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/mattermost/mattermost-plugin-calls/server/public"
 
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/azure"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/whisper.cpp"
@@ -23,7 +24,7 @@ import (
 
 	"github.com/streamer45/silero-vad-go/speech"
 
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 const (
@@ -53,8 +54,13 @@ type trackContext struct {
 // handleTrack gets called whenever a new WebRTC track is received (e.g. someone unmuted
 // for the first time). As soon as this happens we start processing the track.
 func (t *Transcriber) handleTrack(ctx any) error {
-	track, ok := ctx.(*webrtc.TrackRemote)
-	if !ok {
+	m, ok := ctx.(map[string]any)
+	if !ok || m == nil {
+		return fmt.Errorf("failed to convert map")
+	}
+
+	track, ok := m["track"].(*webrtc.TrackRemote)
+	if !ok || track == nil {
 		return fmt.Errorf("failed to convert track")
 	}
 
@@ -244,7 +250,6 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 			}
 		}
 	}
-
 }
 
 // handleClose will kick off post-processing of saved voice tracks.
