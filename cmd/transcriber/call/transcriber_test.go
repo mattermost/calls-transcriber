@@ -44,9 +44,6 @@ func setupTranscriberForTest(t *testing.T) *Transcriber {
 		ModelSize:       config.ModelSizeTiny,
 	}
 	cfg.SetDefaults()
-	tr, err := NewTranscriber(cfg, GetDataDir(""))
-	require.NoError(t, err)
-	require.NotNil(t, tr)
 
 	dir, err := os.MkdirTemp("", "data")
 	if err != nil {
@@ -57,6 +54,10 @@ func setupTranscriberForTest(t *testing.T) *Transcriber {
 		os.Unsetenv("DATA_DIR")
 		os.RemoveAll(dir)
 	})
+
+	tr, err := NewTranscriber(cfg, GetDataDir(""))
+	require.NoError(t, err)
+	require.NotNil(t, tr)
 
 	return tr
 }
