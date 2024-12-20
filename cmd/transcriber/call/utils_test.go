@@ -75,11 +75,18 @@ func TestPublishTranscriptions(t *testing.T) {
 		ModelSize:       config.ModelSizeTiny,
 	}
 	cfg.SetDefaults()
+
+	tmpDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	dataDir := os.Getenv("DATA_DIR")
+	os.Setenv("DATA_DIR", tmpDir)
+	defer os.Setenv("DATA_DIR", dataDir)
+
 	tr, err := NewTranscriber(cfg, GetDataDir(""))
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
-	t.Run("", func(t *testing.T) {
+	t.Run("invalid response", func(t *testing.T) {
 		err := tr.publishTranscription(transcribe.Transcription{})
 		require.EqualError(t, err, "failed to get filename for call: failed to get filename: AppErrorFromJSON: model.utils.decode_json.app_error, body: 404 page not found\n, json: cannot unmarshal number into Go value of type model.AppError")
 	})
@@ -97,11 +104,16 @@ func TestPublishTranscriptions(t *testing.T) {
 			},
 		}
 
+		tr.dataPath = "/invalid"
+		defer func() {
+			tr.dataPath = GetDataDir("")
+		}()
+
 		err := tr.publishTranscription(transcribe.Transcription{})
 		require.EqualError(t, err, fmt.Sprintf("failed to open output file: open %s: no such file or directory", filepath.Join(tr.dataPath, "Call_Test.vtt")))
 	})
 
-	vttFile, err := os.CreateTemp("", "Call_Test.vtt")
+	vttFile, err := os.CreateTemp(tmpDir, "Call_Test.vtt")
 	require.NoError(t, err)
 	defer os.Remove(vttFile.Name())
 
@@ -123,10 +135,6 @@ Claudio Costa
 All right, we should be recording. Welcome everyone, developers meeting for December 13th.
 `))
 	require.NoError(t, err)
-
-	dataDir := os.Getenv("DATA_DIR")
-	os.Setenv("DATA_DIR", filepath.Dir(vttFile.Name()))
-	defer os.Setenv("DATA_DIR", dataDir)
 
 	maxAPIRetryAttempts = 2
 
