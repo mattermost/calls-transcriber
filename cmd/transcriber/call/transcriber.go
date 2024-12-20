@@ -98,7 +98,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 func (t *Transcriber) Start(ctx context.Context) error {
 	var connectOnce sync.Once
 	connectedCh := make(chan struct{})
-	t.client.On(client.RTCConnectEvent, func(_ any) error {
+	err := t.client.On(client.RTCConnectEvent, func(_ any) error {
 		slog.Debug("transcoder RTC client connected")
 
 		connectOnce.Do(func() {
@@ -107,15 +107,24 @@ func (t *Transcriber) Start(ctx context.Context) error {
 
 		return nil
 	})
-	t.client.On(client.RTCTrackEvent, t.handleTrack)
-	t.client.On(client.CloseEvent, func(_ any) error {
+	if err != nil {
+		return fmt.Errorf("failed to register RTCConnectEvent: %w", err)
+	}
+	err = t.client.On(client.RTCTrackEvent, t.handleTrack)
+	if err != nil {
+		return fmt.Errorf("failed to register RTCTrackEvent: %w", err)
+	}
+	err = t.client.On(client.CloseEvent, func(_ any) error {
 		go t.done()
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("failed to register CloseEvent: %w", err)
+	}
 
 	var startOnce sync.Once
 	startedCh := make(chan struct{})
-	t.client.On(client.WSCallJobStateEvent, func(ctx any) error {
+	err = t.client.On(client.WSCallJobStateEvent, func(ctx any) error {
 		if recState, ok := ctx.(client.CallJobState); ok && recState.StartAt > 0 {
 			slog.Debug("received call recording state", slog.Any("jobState", recState))
 
@@ -134,8 +143,11 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("failed to register WSCallJobStateEvent: %w", err)
+	}
 
-	t.client.On(client.WSJobStopEvent, func(ctx any) error {
+	err = t.client.On(client.WSJobStopEvent, func(ctx any) error {
 		jobID, _ := ctx.(string)
 		if jobID == "" {
 			return fmt.Errorf("unexpected empty jobID")
@@ -148,6 +160,9 @@ func (t *Transcriber) Start(ctx context.Context) error {
 
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("failed to register WSJobStopEvent: %w", err)
+	}
 
 	if err := t.client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
