@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/pion/webrtc/v3/pkg/media/oggreader"
+	"github.com/pion/webrtc/v4/pkg/media/oggreader"
 	"github.com/stretchr/testify/require"
 )
 
