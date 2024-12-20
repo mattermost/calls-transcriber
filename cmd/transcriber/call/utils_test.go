@@ -75,11 +75,11 @@ func TestPublishTranscriptions(t *testing.T) {
 		ModelSize:       config.ModelSizeTiny,
 	}
 	cfg.SetDefaults()
-	tr, err := NewTranscriber(cfg)
+	tr, err := NewTranscriber(cfg, GetDataDir(""))
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
-	t.Run("failure to get filename", func(t *testing.T) {
+	t.Run("", func(t *testing.T) {
 		err := tr.publishTranscription(transcribe.Transcription{})
 		require.EqualError(t, err, "failed to get filename for call: failed to get filename: AppErrorFromJSON: model.utils.decode_json.app_error, body: 404 page not found\n, json: cannot unmarshal number into Go value of type model.AppError")
 	})
@@ -98,7 +98,7 @@ func TestPublishTranscriptions(t *testing.T) {
 		}
 
 		err := tr.publishTranscription(transcribe.Transcription{})
-		require.EqualError(t, err, fmt.Sprintf("failed to open output file: open %s: no such file or directory", filepath.Join(getDataDir(), "Call_Test.vtt")))
+		require.EqualError(t, err, fmt.Sprintf("failed to open output file: open %s: no such file or directory", filepath.Join(tr.dataPath, "Call_Test.vtt")))
 	})
 
 	vttFile, err := os.CreateTemp("", "Call_Test.vtt")

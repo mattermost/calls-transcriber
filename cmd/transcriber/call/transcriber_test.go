@@ -44,7 +44,7 @@ func setupTranscriberForTest(t *testing.T) *Transcriber {
 		ModelSize:       config.ModelSizeTiny,
 	}
 	cfg.SetDefaults()
-	tr, err := NewTranscriber(cfg)
+	tr, err := NewTranscriber(cfg, GetDataDir(""))
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -59,6 +59,41 @@ func setupTranscriberForTest(t *testing.T) *Transcriber {
 	})
 
 	return tr
+}
+
+func TestNewTranscriber(t *testing.T) {
+	t.Run("invalid siteURL", func(t *testing.T) {
+		cfg := config.CallTranscriberConfig{
+			SiteURL:         "invalid-url",
+			CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+			PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+			TranscriptionID: "67t5u6cmtfbb7jug739d43xa9e",
+			AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+			NumThreads:      1,
+			ModelSize:       config.ModelSizeTiny,
+		}
+		cfg.SetDefaults()
+
+		tr, err := NewTranscriber(cfg, GetDataDir(""))
+		require.EqualError(t, err, "failed to validate URL: SiteURL parsing failed: invalid scheme \"\"")
+		require.Nil(t, tr)
+	})
+	t.Run("empty data path", func(t *testing.T) {
+		cfg := config.CallTranscriberConfig{
+			SiteURL:         "http://localhost:8065",
+			CallID:          "8w8jorhr7j83uqr6y1st894hqe",
+			PostID:          "udzdsg7dwidbzcidx5khrf8nee",
+			TranscriptionID: "67t5u6cmtfbb7jug739d43xa9e",
+			AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
+			NumThreads:      1,
+			ModelSize:       config.ModelSizeTiny,
+		}
+		cfg.SetDefaults()
+
+		tr, err := NewTranscriber(cfg, "")
+		require.EqualError(t, err, "dataPath should not be empty")
+		require.Nil(t, tr)
+	})
 }
 
 func TestTranscribeTrack(t *testing.T) {
@@ -192,7 +227,7 @@ func TestProcessLiveTrack(t *testing.T) {
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("userID_%s.ogg", track.id)))
+			trackFile, err := os.Open(filepath.Join(tr.dataPath, fmt.Sprintf("userID_%s.ogg", track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -293,7 +328,7 @@ func TestProcessLiveTrack(t *testing.T) {
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("userID_%s.ogg", track.id)))
+			trackFile, err := os.Open(filepath.Join(tr.dataPath, fmt.Sprintf("userID_%s.ogg", track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 
@@ -393,7 +428,7 @@ func TestProcessLiveTrack(t *testing.T) {
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
-			trackFile, err := os.Open(filepath.Join(getDataDir(), fmt.Sprintf("userID_%s.ogg", track.id)))
+			trackFile, err := os.Open(filepath.Join(tr.dataPath, fmt.Sprintf("userID_%s.ogg", track.id)))
 			defer trackFile.Close()
 			require.NoError(t, err)
 

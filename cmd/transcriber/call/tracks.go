@@ -100,7 +100,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 		return
 	}
 	ctx.user = user
-	ctx.filename = filepath.Join(getDataDir(), fmt.Sprintf("%s_%s.ogg", user.Id, track.ID()))
+	ctx.filename = filepath.Join(t.dataPath, fmt.Sprintf("%s_%s.ogg", user.Id, track.ID()))
 
 	var prevArrivalTime time.Time
 	var prevRTPTimestamp uint32
@@ -535,7 +535,7 @@ func (t *Transcriber) newTrackTranscriber() (transcribe.Transcriber, error) {
 		return azure.NewSpeechRecognizer(azure.SpeechRecognizerConfig{
 			SpeechKey:    speechKey,
 			SpeechRegion: speechRegion,
-			DataDir:      getDataDir(),
+			DataDir:      t.dataPath,
 		})
 	default:
 		return nil, fmt.Errorf("transcribe API %q not implemented", t.cfg.TranscribeAPI)

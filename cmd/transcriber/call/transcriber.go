@@ -32,6 +32,8 @@ type APIClient interface {
 type Transcriber struct {
 	cfg config.CallTranscriberConfig
 
+	dataPath string
+
 	client    *client.Client
 	apiClient APIClient
 	apiURL    string
@@ -48,9 +50,13 @@ type Transcriber struct {
 	captionsPoolDoneCh  chan struct{}
 }
 
-func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr error) {
+func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Transcriber, retErr error) {
 	if err := cfg.IsValidURL(); err != nil {
 		return nil, fmt.Errorf("failed to validate URL: %w", err)
+	}
+
+	if dataPath == "" {
+		return nil, fmt.Errorf("dataPath should not be empty")
 	}
 
 	apiClient := model.NewAPIv4Client(cfg.SiteURL)
@@ -60,6 +66,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig) (t *Transcriber, retErr er
 		cfg:       cfg,
 		apiClient: apiClient,
 		apiURL:    apiClient.URL,
+		dataPath:  dataPath,
 	}
 
 	defer func() {
