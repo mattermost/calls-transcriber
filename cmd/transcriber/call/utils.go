@@ -66,11 +66,11 @@ func (t *Transcriber) getUserForSession(sessionID string) (*model.User, error) {
 	return nil, fmt.Errorf("failed to get user for call: max attempts reached")
 }
 
-func getDataDir() string {
+func GetDataDir(jobID string) string {
 	if dir := os.Getenv("DATA_DIR"); dir != "" {
-		return dir
+		return filepath.Join(dir, jobID)
 	}
-	return dataDir
+	return filepath.Join(dataDir, jobID)
 }
 
 func getModelsDir() string {
@@ -102,12 +102,12 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 	var vttFile *os.File
 	var textFile *os.File
 	openFiles := func() error {
-		vttFile, err = os.OpenFile(filepath.Join(getDataDir(), fname+".vtt"), os.O_RDWR|os.O_CREATE, 0600)
+		vttFile, err = os.OpenFile(filepath.Join(t.dataPath, fname+".vtt"), os.O_RDWR|os.O_CREATE, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to open output file: %w", err)
 		}
 
-		textFile, err = os.OpenFile(filepath.Join(getDataDir(), fname+".txt"), os.O_RDWR|os.O_CREATE, 0600)
+		textFile, err = os.OpenFile(filepath.Join(t.dataPath, fname+".txt"), os.O_RDWR|os.O_CREATE, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to open output file: %w", err)
 		}
