@@ -6,11 +6,11 @@ require (
 	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.0.12
-	github.com/mattermost/rtcd v0.18.1-0.20241219235235-f558e9c621d4
+	github.com/mattermost/rtcd v0.18.1-0.20250107081358-290c5ce0a692
 	github.com/pion/interceptor v0.1.37
 	github.com/pion/randutil v0.1.0
-	github.com/pion/rtp v1.8.9
-	github.com/pion/webrtc/v4 v4.0.6
+	github.com/pion/rtp v1.8.10
+	github.com/pion/webrtc/v4 v4.0.7
 	github.com/streamer45/silero-vad-go v0.2.1
 	github.com/stretchr/testify v1.10.0
 )
@@ -51,8 +51,8 @@ require (
 	github.com/wiggin77/srslog v1.0.1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
