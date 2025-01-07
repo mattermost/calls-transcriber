@@ -36,7 +36,7 @@ func TestReportJobFailure(t *testing.T) {
 		AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
 	}
 	cfg.SetDefaults()
-	tr, err := NewTranscriber(cfg)
+	tr, err := NewTranscriber(cfg, GetDataDir(""))
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 

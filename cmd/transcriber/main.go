@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -39,11 +40,31 @@ func slogReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 }
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	trID := os.Getenv("TRANSCRIPTION_ID")
+
+	// Create scoped (by jobID) data path
+	dataPath := call.GetDataDir(trID)
+	err := os.MkdirAll(dataPath, 0700)
+	if err != nil {
+		slog.Error("failed to create data path", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	logFile, err := os.Create(filepath.Join(dataPath, "transcriber.log"))
+	if err != nil {
+		slog.Error("failed to create log file", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	// This lets us write logs simultaneously to console and file.
+	logWriter := io.MultiWriter(os.Stdout, logFile)
+
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{
 		AddSource:   true,
 		Level:       slog.LevelDebug,
 		ReplaceAttr: slogReplaceAttr,
-	})).With("trID", os.Getenv("TRANSCRIPTION_ID"))
+	})).With("trID", trID)
 	slog.SetDefault(logger)
 
 	pid := os.Getpid()
@@ -59,7 +80,7 @@ func main() {
 	}
 	cfg.SetDefaults()
 
-	transcriber, err := call.NewTranscriber(cfg)
+	transcriber, err := call.NewTranscriber(cfg, dataPath)
 	if err != nil {
 		slog.Error("failed to create call transcriber", slog.String("err", err.Error()))
 		os.Exit(1)
