@@ -252,7 +252,7 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 
 	if cfg.TranscribeAPIOptions != nil {
 		data, err := json.Marshal(cfg.TranscribeAPIOptions)
-		if err != nil {
+		if err == nil {
 			vars = append(vars, fmt.Sprintf("TRANSCRIBE_API_OPTIONS='%s'", string(data)))
 		} else {
 			slog.Error("failed to marshal TranscribeAPIOptions", slog.String("err", err.Error()))
