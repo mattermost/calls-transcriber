@@ -88,7 +88,7 @@ func TestPublishTranscriptions(t *testing.T) {
 
 	t.Run("invalid response", func(t *testing.T) {
 		err := tr.publishTranscription(transcribe.Transcription{})
-		require.EqualError(t, err, "failed to get filename for call: failed to get filename: AppErrorFromJSON: model.utils.decode_json.app_error, body: 404 page not found\n, json: cannot unmarshal number into Go value of type model.AppError")
+		require.EqualError(t, err, "failed to get filename for call: failed to get filename: failed to decode JSON payload into AppError. Body: 404 page not found\n: json: cannot unmarshal number into Go value of type model.AppError")
 	})
 
 	t.Run("missing file", func(t *testing.T) {
@@ -153,7 +153,7 @@ All right, we should be recording. Welcome everyone, developers meeting for Dece
 		}
 
 		err := tr.publishTranscription(transcribe.Transcription{})
-		require.EqualError(t, err, "maximum attempts reached : upload session error")
+		require.EqualError(t, err, "maximum attempts reached: upload session error")
 	})
 
 	t.Run("upload failure", func(t *testing.T) {
@@ -189,7 +189,7 @@ All right, we should be recording. Welcome everyone, developers meeting for Dece
 		}
 
 		err := tr.publishTranscription(transcribe.Transcription{})
-		require.EqualError(t, err, "maximum attempts reached : upload error")
+		require.EqualError(t, err, "maximum attempts reached: upload error")
 	})
 
 	t.Run("success after failure", func(t *testing.T) {

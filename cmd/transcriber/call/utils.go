@@ -286,7 +286,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 		return nil
 	}
 
-	return fmt.Errorf("maximum attempts reached : %w", lastErr)
+	return fmt.Errorf("maximum attempts reached: %w", lastErr)
 }
 
 func newTimeP(t time.Time) *time.Time {
