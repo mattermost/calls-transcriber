@@ -22,7 +22,7 @@ FROM --platform=$TARGETPLATFORM golang:${GO_VERSION}-bookworm AS builder
 # Install patch
 # hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install --no-install-recommends -y patch
+    apt-get install --no-install-recommends -y patch ccache
 
 ARG TARGETOS
 ARG TARGETARCH

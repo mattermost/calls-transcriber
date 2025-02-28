@@ -13,12 +13,13 @@ AZURE_SDK_SHA=$9
 IS_BUILD=${10}
 ONNX_ARCH=x64
 ONNX_SHA=a0994512ec1e1debc00c18bfc7a5f16249f6ebd6a6128ff2034464cc380ea211
+UNAME_M=$(uname -m)
 if [ "$TARGET_ARCH" == "arm64" ]; then
 	ONNX_ARCH=aarch64
 	ONNX_SHA=c1dcd8ab29e8d227d886b6ee415c08aea893956acf98f0758a42a84f27c02851
+	UNAME_M="arm64"
 fi
 
-UNAME_M=$(uname -m)
 if [ "$IS_M1" == "true" ]; then
 	echo "Overriding UNAME_M on detected M1 host";
 	UNAME_M="arm64"
