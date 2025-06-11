@@ -42,13 +42,7 @@ func slogReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 func main() {
 	trID := os.Getenv("TRANSCRIPTION_ID")
 
-	// Create scoped (by jobID) data path
 	dataPath := call.GetDataDir(trID)
-	err := os.MkdirAll(dataPath, 0700)
-	if err != nil {
-		slog.Error("failed to create data path", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
 
 	logFile, err := os.Create(filepath.Join(dataPath, "transcriber.log"))
 	if err != nil {
