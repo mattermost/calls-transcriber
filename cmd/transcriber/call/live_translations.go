@@ -22,7 +22,10 @@ func (t *Transcriber) translateTrack(c *client.Client, tctx *trackCtx, targetLan
 		defer close(pktsCh)
 		for {
 			select {
-			case pkt := <-tctx.pktsCh:
+			case pkt, ok := <-tctx.pktsCh:
+				if !ok {
+					return
+				}
 				select {
 				case pktsCh <- pkt:
 				default:
