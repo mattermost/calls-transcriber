@@ -448,6 +448,8 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 	cfg.LiveCaptionsNumTranscribers = 1
 	cfg.LiveCaptionsNumThreadsPerTranscriber = 1
 	cfg.LiveCaptionsLanguage = "nl"
+	cfg.LiveTranslationsOn = true
+	cfg.LiveTranslationsInputLanguage = "it-IT"
 	cfg.SetDefaults()
 	require.Equal(t, []string{
 		"SITE_URL=http://localhost:8065",
@@ -464,6 +466,8 @@ func TestCallTranscriberConfigToEnv(t *testing.T) {
 		"LIVE_CAPTIONS_NUM_TRANSCRIBERS=1",
 		"LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER=1",
 		"LIVE_CAPTIONS_LANGUAGE=nl",
+		"LIVE_TRANSLATIONS_ON=true",
+		"LIVE_TRANSLATIONS_INPUT_LANGUAGE=it-IT",
 		"WEBVTT_OMIT_SPEAKER=false",
 		"TEXT_COMPACT_SILENCE_THRESHOLD_MS=2000",
 		"TEXT_COMPACT_MAX_SEGMENT_DURATION_MS=10000",
@@ -482,6 +486,9 @@ func TestCallTranscriberConfigMap(t *testing.T) {
 	cfg.LiveCaptionsNumTranscribers = 1
 	cfg.LiveCaptionsNumThreadsPerTranscriber = 1
 	cfg.OutputOptions.WebVTT.OmitSpeaker = true
+	cfg.LiveTranslationsOn = true
+	cfg.LiveTranslationsInputLanguage = ""
+	cfg.TranscribeAPI = TranscribeAPIAzure
 	cfg.SetDefaults()
 
 	inTranscriber = "true"

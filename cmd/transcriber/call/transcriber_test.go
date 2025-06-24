@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -21,7 +19,6 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -166,12 +163,6 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			defer mockClient.AssertExpectations(t)
 
-			mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
-				"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
-				Return(&http.Response{
-					Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
-				}, nil).Once()
-
 			track := &trackRemoteMock{
 				id: "trackID",
 			}
@@ -274,12 +265,6 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			defer mockClient.AssertExpectations(t)
 
-			mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
-				"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
-				Return(&http.Response{
-					Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
-				}, nil).Once()
-
 			track := &trackRemoteMock{
 				id: "trackID",
 			}
@@ -373,12 +358,6 @@ func TestProcessLiveTrack(t *testing.T) {
 			tr.apiClient = mockClient
 
 			defer mockClient.AssertExpectations(t)
-
-			mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
-				"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
-				Return(&http.Response{
-					Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
-				}, nil).Once()
 
 			track := &trackRemoteMock{
 				id: "trackID",
@@ -479,16 +458,6 @@ func TestProcessLiveTrack(t *testing.T) {
 
 		defer mockClient.AssertExpectations(t)
 
-		mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
-			"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
-			Return(nil, fmt.Errorf("failed")).Once()
-
-		mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
-			"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
-			Return(&http.Response{
-				Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
-			}, nil).Once()
-
 		track := &trackRemoteMock{
 			id: "trackID",
 		}
@@ -544,12 +513,6 @@ func TestProcessLiveTrack(t *testing.T) {
 		tr.apiClient = mockClient
 
 		defer mockClient.AssertExpectations(t)
-
-		mockClient.On("DoAPIRequest", mock.Anything, http.MethodGet,
-			"http://localhost:8065/plugins/com.mattermost.calls/bot/calls/8w8jorhr7j83uqr6y1st894hqe/sessions/sessionID/profile", "", "").
-			Return(&http.Response{
-				Body: io.NopCloser(strings.NewReader(`{"id": "userID", "username": "testuser"}`)),
-			}, nil).Once()
 
 		track := &trackRemoteMock{
 			id: "trackID",
