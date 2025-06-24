@@ -82,6 +82,10 @@ type CallTranscriberConfig struct {
 	LiveCaptionsNumTranscribers          int
 	LiveCaptionsNumThreadsPerTranscriber int
 	LiveCaptionsLanguage                 string
+
+	// live translations config
+	LiveTranslationsOn            bool
+	LiveTranslationsInputLanguage string
 }
 
 func (p ModelSize) IsValid() bool {
@@ -182,6 +186,16 @@ func (cfg CallTranscriberConfig) IsValid() error {
 		}
 	}
 
+	if cfg.LiveTranslationsOn {
+		if cfg.TranscribeAPI != TranscribeAPIAzure {
+			return fmt.Errorf("LiveTranslationsOn is only supported with Azure AI API")
+		}
+
+		if cfg.LiveTranslationsInputLanguage != "" && len(cfg.LiveTranslationsInputLanguage) != 4 {
+			return fmt.Errorf("LiveTranslationsInputLanguage should be a 4-letter BCP-47 language code")
+		}
+	}
+
 	if err := cfg.OutputOptions.Text.IsValid(); err != nil {
 		return err
 	}
@@ -248,6 +262,8 @@ func (cfg CallTranscriberConfig) ToEnv() []string {
 		fmt.Sprintf("LIVE_CAPTIONS_NUM_TRANSCRIBERS=%d", cfg.LiveCaptionsNumTranscribers),
 		fmt.Sprintf("LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER=%d", cfg.LiveCaptionsNumThreadsPerTranscriber),
 		fmt.Sprintf("LIVE_CAPTIONS_LANGUAGE=%s", cfg.LiveCaptionsLanguage),
+		fmt.Sprintf("LIVE_TRANSLATIONS_ON=%t", cfg.LiveTranslationsOn),
+		fmt.Sprintf("LIVE_TRANSLATIONS_INPUT_LANGUAGE=%s", cfg.LiveTranslationsInputLanguage),
 	}
 
 	if cfg.TranscribeAPIOptions != nil {
@@ -287,6 +303,8 @@ func (cfg CallTranscriberConfig) ToMap() map[string]any {
 		"live_captions_num_transcribers": cfg.LiveCaptionsNumTranscribers,
 		"live_captions_language":         cfg.LiveCaptionsLanguage,
 		"live_captions_num_threads_per_transcriber": cfg.LiveCaptionsNumThreadsPerTranscriber,
+		"live_translations_on":                      cfg.LiveTranslationsOn,
+		"live_translations_input_language":          cfg.LiveTranslationsInputLanguage,
 	}
 
 	for k, v := range cfg.OutputOptions.WebVTT.ToMap() {
@@ -362,6 +380,11 @@ func (cfg *CallTranscriberConfig) FromMap(m map[string]any) *CallTranscriberConf
 		cfg.OutputFormat, _ = m["output_format"].(OutputFormat)
 	}
 
+	cfg.LiveTranslationsOn, _ = m["live_translations_on"].(bool)
+	if language, ok := m["live_translations_input_language"].(string); ok {
+		cfg.LiveTranslationsInputLanguage = language
+	}
+
 	cfg.OutputOptions.WebVTT.FromMap(m)
 	cfg.OutputOptions.Text.FromMap(m)
 
@@ -377,9 +400,11 @@ func FromEnv() (CallTranscriberConfig, error) {
 	cfg.TranscriptionID = os.Getenv("TRANSCRIPTION_ID")
 	cfg.NumThreads, _ = strconv.Atoi(os.Getenv("NUM_THREADS"))
 	cfg.LiveCaptionsOn, _ = strconv.ParseBool(os.Getenv("LIVE_CAPTIONS_ON"))
+	cfg.LiveTranslationsOn, _ = strconv.ParseBool(os.Getenv("LIVE_TRANSLATIONS_ON"))
 	cfg.LiveCaptionsNumTranscribers, _ = strconv.Atoi(os.Getenv("LIVE_CAPTIONS_NUM_TRANSCRIBERS"))
 	cfg.LiveCaptionsNumThreadsPerTranscriber, _ = strconv.Atoi(os.Getenv("LIVE_CAPTIONS_NUM_THREADS_PER_TRANSCRIBER"))
 	cfg.LiveCaptionsLanguage = os.Getenv("LIVE_CAPTIONS_LANGUAGE")
+	cfg.LiveTranslationsInputLanguage = os.Getenv("LIVE_TRANSLATIONS_INPUT_LANGUAGE")
 
 	if val := os.Getenv("TRANSCRIBE_API"); val != "" {
 		cfg.TranscribeAPI = TranscribeAPI(val)

@@ -2,6 +2,7 @@ package azure
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 // Util to wrap our float32 samples in a WAV (16-bit PCM, mono, 16KHz)
@@ -43,4 +44,25 @@ func f32PCMToWAV(samples []float32) []byte {
 	}
 
 	return wav
+}
+
+// Util to convert WAV data (16-bit PCM) to int16 samples
+func wavToPCMInt16(wavData []byte) ([]int16, error) {
+	const wavHeaderLen = 44
+
+	if len(wavData) < wavHeaderLen {
+		return nil, fmt.Errorf("data too short to be a valid WAV file")
+	}
+
+	data := wavData[wavHeaderLen:]
+	if len(data)%2 != 0 {
+		return nil, fmt.Errorf("invalid WAV data length (not divisible by 2)")
+	}
+
+	samples := make([]int16, len(data)/2)
+	for i := 0; i < len(samples); i++ {
+		samples[i] = int16(binary.LittleEndian.Uint16(data[i*2:]))
+	}
+
+	return samples, nil
 }

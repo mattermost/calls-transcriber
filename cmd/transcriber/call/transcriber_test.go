@@ -152,6 +152,11 @@ func (t *trackRemoteMock) ReadRTP() (*rtp.Packet, interceptor.Attributes, error)
 }
 
 func TestProcessLiveTrack(t *testing.T) {
+	user := &model.User{
+		Id:       "userID",
+		Username: "testuser",
+	}
+
 	t.Run("synchronization", func(t *testing.T) {
 		t.Run("empty payloads", func(t *testing.T) {
 			tr := setupTranscriberForTest(t)
@@ -224,7 +229,7 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-			tr.processLiveTrack(track, sessionID)
+			tr.processLiveTrack(track, sessionID, user)
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
@@ -325,7 +330,7 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-			tr.processLiveTrack(track, sessionID)
+			tr.processLiveTrack(track, sessionID, user)
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
@@ -425,7 +430,7 @@ func TestProcessLiveTrack(t *testing.T) {
 
 			tr.liveTracksWg.Add(1)
 			tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-			tr.processLiveTrack(track, sessionID)
+			tr.processLiveTrack(track, sessionID, user)
 			close(tr.trackCtxs)
 			require.Len(t, tr.trackCtxs, 1)
 
@@ -526,7 +531,7 @@ func TestProcessLiveTrack(t *testing.T) {
 
 		tr.liveTracksWg.Add(1)
 		tr.startTime.Store(newTimeP(time.Now().Add(-time.Second)))
-		tr.processLiveTrack(track, "sessionID")
+		tr.processLiveTrack(track, "sessionID", user)
 
 		close(tr.trackCtxs)
 		require.Len(t, tr.trackCtxs, 1)
@@ -593,7 +598,7 @@ func TestProcessLiveTrack(t *testing.T) {
 		}
 
 		tr.liveTracksWg.Add(1)
-		tr.processLiveTrack(track, "sessionID")
+		tr.processLiveTrack(track, "sessionID", user)
 		close(tr.trackCtxs)
 		require.Empty(t, tr.trackCtxs)
 	})

@@ -40,6 +40,7 @@ type Transcriber struct {
 
 	errCh        chan error
 	doneCh       chan struct{}
+	closingCh    chan struct{}
 	doneOnce     sync.Once
 	liveTracksWg sync.WaitGroup
 	trackCtxs    chan trackContext
@@ -48,6 +49,8 @@ type Transcriber struct {
 	captionsPoolQueueCh chan captionPackage
 	captionsPoolWg      sync.WaitGroup
 	captionsPoolDoneCh  chan struct{}
+
+	liveTranslationsWg sync.WaitGroup
 }
 
 func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Transcriber, retErr error) {
@@ -95,6 +98,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 	t.client = rtcdClient
 	t.errCh = make(chan error, 1)
 	t.doneCh = make(chan struct{})
+	t.closingCh = make(chan struct{})
 	t.trackCtxs = make(chan trackContext, maxTracksContexes)
 	t.captionsPoolQueueCh = make(chan captionPackage, transcriberQueueChBuffer)
 	t.captionsPoolDoneCh = make(chan struct{})
@@ -190,6 +194,13 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		go t.startTranscriberPool()
 	}
 
+	if t.cfg.LiveTranslationsOn {
+		slog.Debug("LiveTranslationsOn is true; starting live translations service.",
+			slog.String("LiveTranslationsInputLanguage", t.cfg.LiveTranslationsInputLanguage))
+		t.liveTranslationsWg.Add(1)
+		go t.startLiveTranslations(t.closingCh)
+	}
+
 	select {
 	case <-startedCh:
 		if err := t.ReportJobStarted(); err != nil {
@@ -230,7 +241,9 @@ func (t *Transcriber) Err() error {
 
 func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
+		close(t.closingCh)
 		close(t.captionsPoolDoneCh)
+		t.liveTranslationsWg.Wait()
 		t.errCh <- t.handleClose()
 		close(t.doneCh)
 	})

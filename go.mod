@@ -3,13 +3,13 @@ module github.com/mattermost/calls-transcriber
 go 1.23.6
 
 require (
-	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
+	github.com/Microsoft/cognitive-services-speech-sdk-go v1.43.1-0.20250418171739-32d0edd08e1f
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.1.10
-	github.com/mattermost/rtcd v1.0.2-0.20250310180637-d93ac54cb042
+	github.com/mattermost/rtcd v1.1.4-0.20250619223938-b68bd4620315
 	github.com/pion/interceptor v0.1.37
 	github.com/pion/randutil v0.1.0
-	github.com/pion/rtp v1.8.10
+	github.com/pion/rtp v1.8.18
 	github.com/pion/webrtc/v4 v4.0.7
 	github.com/streamer45/silero-vad-go v0.2.1
 	github.com/stretchr/testify v1.10.0
@@ -42,12 +42,12 @@ require (
 	github.com/pion/datachannel v1.5.10 // indirect
 	github.com/pion/dtls/v3 v3.0.4 // indirect
 	github.com/pion/ice/v4 v4.0.3 // indirect
-	github.com/pion/logging v0.2.2 // indirect
+	github.com/pion/logging v0.2.3 // indirect
 	github.com/pion/mdns/v2 v2.0.7 // indirect
 	github.com/pion/rtcp v1.2.15 // indirect
 	github.com/pion/sctp v1.8.35 // indirect
 	github.com/pion/sdp/v3 v3.0.9 // indirect
-	github.com/pion/srtp/v3 v3.0.4 // indirect
+	github.com/pion/srtp/v3 v3.0.5 // indirect
 	github.com/pion/stun/v3 v3.0.0 // indirect
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/turn/v4 v4.0.0 // indirect
@@ -62,7 +62,7 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250124145028-65684f501c47 // indirect
 	google.golang.org/grpc v1.70.0 // indirect
