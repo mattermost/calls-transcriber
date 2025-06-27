@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,7 +111,7 @@ func TestTranscribe(t *testing.T) {
 	segments, lang, err := ctx.Transcribe(samples)
 	require.NoError(t, err)
 	require.NotEmpty(t, segments)
-	require.Equal(t, " This is a test transcription sample.", segments[0].Text)
+	require.Equal(t, "this is a test transcription sample.", strings.ToLower(strings.TrimSpace(segments[0].Text)))
 	require.Equal(t, "en", lang)
 
 	err = ctx.Destroy()

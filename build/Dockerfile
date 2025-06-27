@@ -55,6 +55,8 @@ ARG ONNX_VERSION
 ARG AZURE_SDK_VERSION
 COPY --from=builder /src/dist/calls-transcriber-${TARGETOS}-${TARGETARCH} /opt/calls-transcriber/bin/calls-transcriber
 COPY --from=builder /tmp/whisper.cpp-${WHISPER_VERSION}/models /models
+COPY --from=builder /tmp/whisper.cpp-${WHISPER_VERSION}/build/src/libwhisper* /usr/lib/
+COPY --from=builder /tmp/whisper.cpp-${WHISPER_VERSION}/build/ggml/src/libggml* /usr/lib/
 COPY --from=builder /tmp/onnxruntime-linux-${ONNX_VERSION}/lib/* /usr/lib/
 COPY --from=builder /tmp/SpeechSDK-Linux-${AZURE_SDK_VERSION}/lib/${TARGETARCH}/* /usr/lib/
 COPY --from=builder /src/build/models/silero_vad.onnx /models
