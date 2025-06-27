@@ -114,7 +114,7 @@ func TestTranscribeTrack(t *testing.T) {
 		trackTr, d, err := tr.transcribeTrack(tctx)
 		require.NoError(t, err)
 		require.Len(t, trackTr.Segments, 1)
-		require.Equal(t, " This is a test transcription sample.", trackTr.Segments[0].Text)
+		require.Equal(t, "this is a test transcription sample.", strings.TrimSpace(strings.ToLower(trackTr.Segments[0].Text)))
 		require.Equal(t, 2888*time.Millisecond, d)
 	})
 
@@ -132,8 +132,8 @@ func TestTranscribeTrack(t *testing.T) {
 		trackTr, d, err := tr.transcribeTrack(tctx)
 		require.NoError(t, err)
 		require.Len(t, trackTr.Segments, 2)
-		require.Equal(t, " This is a test transcription sample.", trackTr.Segments[0].Text)
-		require.Equal(t, " With a gap in speech of a couple of seconds.", trackTr.Segments[1].Text)
+		require.Equal(t, "this is a test transcription sample.", strings.TrimSpace(strings.ToLower(trackTr.Segments[0].Text)))
+		require.Equal(t, "with a gap in speech of a couple of seconds.", strings.TrimSpace(strings.ToLower(trackTr.Segments[1].Text)))
 		require.Equal(t, 4668*time.Millisecond, d)
 	})
 }

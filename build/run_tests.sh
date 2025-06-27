@@ -14,7 +14,7 @@ AZURE_SDK_SHA=$9
 OPUS_INCLUDE_PATH="/tmp/opus-${OPUS_VERSION}/include"
 WHISPER_INCLUDE_PATH="/tmp/whisper.cpp-${WHISPER_VERSION}/include:/tmp/whisper.cpp-${WHISPER_VERSION}/ggml/include"
 OPUS_LIBRARY_PATH="/tmp/opus-${OPUS_VERSION}/.libs"
-WHISPER_LIBRARY_PATH="/tmp/whisper.cpp-${WHISPER_VERSION}"
+WHISPER_LIBRARY_PATH="/tmp/whisper.cpp-${WHISPER_VERSION}/build/src:/tmp/whisper.cpp-${WHISPER_VERSION}/build/ggml/src"
 ONNX_INCLUDE_PATH="/tmp/onnxruntime-linux-${ONNX_VERSION}/include"
 ONNX_LIBRARY_PATH="/tmp/onnxruntime-linux-${ONNX_VERSION}/lib"
 AZURE_SDK_INCLUDE_PATH="/tmp/SpeechSDK-Linux-${AZURE_SDK_VERSION}/include/c_api"
@@ -25,6 +25,6 @@ mv /tmp/whisper.cpp-${WHISPER_VERSION}/models/ggml-tiny.bin /app/build/models &&
 MODELS_DIR=/app/build/models \
 C_INCLUDE_PATH="${OPUS_INCLUDE_PATH}:${WHISPER_INCLUDE_PATH}:${ONNX_INCLUDE_PATH}:${AZURE_SDK_INCLUDE_PATH}" \
 LIBRARY_PATH="${OPUS_LIBRARY_PATH}:${WHISPER_LIBRARY_PATH}:${ONNX_LIBRARY_PATH}:${AZURE_SDK_LIBRARY_PATH}" \
-LD_RUN_PATH="${ONNX_LIBRARY_PATH}:${AZURE_SDK_LIBRARY_PATH}" \
+LD_RUN_PATH="${ONNX_LIBRARY_PATH}:${AZURE_SDK_LIBRARY_PATH}:${WHISPER_LIBRARY_PATH}" \
 CGO_LDFLAGS="-lMicrosoft.CognitiveServices.Speech.core" \
 go test ${GO_TEST_OPTS} ./...

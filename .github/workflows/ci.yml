@@ -34,3 +34,21 @@ jobs:
         go mod download
         go mod verify
         make test
+
+  test-arm64:
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/src/github.com/${{ github.repository }}
+
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        path: ${{ github.workspace }}/src/github.com/${{ github.repository }}
+    - name: Execute Tests
+      run: |
+        go mod download
+        go mod verify
+        make test
