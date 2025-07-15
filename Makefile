@@ -35,13 +35,6 @@ endif
 OS                      := linux
 # Fallback to amd64 if ARCH is still unset.
 ARCH                    ?= amd64
-# We need to detect M1 host platforms.
-IS_M1                   := false
-ifeq ($(shell uname -s),Darwin)
-ifeq ($(shell uname -p),arm)
-IS_M1 = true
-endif
-endif
 
 ## CGO dependencies
 # Whisper.cpp
@@ -206,7 +199,6 @@ endif
 	--build-arg WHISPER_SHA=${WHISPER_SHA} \
 	--build-arg WHISPER_MODELS=${WHISPER_MODELS} \
 	--build-arg ONNX_VERSION=${ONNX_VERSION} \
-	--build-arg IS_M1=${IS_M1} \
 	--build-arg AZURE_SDK_VERSION=${AZURE_SDK_VERSION} \
 	--build-arg AZURE_SDK_SHA=${AZURE_SDK_SHA} \
 	-f ${DOCKER_FILE} . \
