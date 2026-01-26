@@ -82,6 +82,10 @@ type CallTranscriberConfig struct {
 	LiveCaptionsNumTranscribers          int
 	LiveCaptionsNumThreadsPerTranscriber int
 	LiveCaptionsLanguage                 string
+
+	// TLS config
+	TLSCACertFile         string
+	TLSInsecureSkipVerify bool
 }
 
 func (p ModelSize) IsValid() bool {
@@ -405,6 +409,12 @@ func FromEnv() (CallTranscriberConfig, error) {
 
 	cfg.OutputOptions.WebVTT.FromEnv()
 	cfg.OutputOptions.Text.FromEnv()
+
+	cfg.TLSCACertFile = os.Getenv("TLS_CA_CERT_FILE")
+
+	if val := os.Getenv("TLS_INSECURE_SKIP_VERIFY"); val != "" {
+		cfg.TLSInsecureSkipVerify = val == "true" || val == "1"
+	}
 
 	return cfg, nil
 }

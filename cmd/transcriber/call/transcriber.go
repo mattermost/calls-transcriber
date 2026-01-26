@@ -62,6 +62,17 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 	apiClient := model.NewAPIv4Client(cfg.SiteURL)
 	apiClient.SetToken(cfg.AuthToken)
 
+	// Configure TLS if needed
+	if cfg.TLSCACertFile != "" || cfg.TLSInsecureSkipVerify {
+		tlsConfig, err := getTLSConfig(cfg.TLSCACertFile, cfg.TLSInsecureSkipVerify)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get TLS config: %w", err)
+		}
+		apiClient.HTTPClient.Transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+	}
+
 	t = &Transcriber{
 		cfg:       cfg,
 		apiClient: apiClient,
