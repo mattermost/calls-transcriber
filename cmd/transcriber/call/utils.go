@@ -2,8 +2,6 @@ package call
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -324,24 +322,3 @@ func (t *Transcriber) getFilenameForCall() (string, error) {
 	return filename, nil
 }
 
-func getTLSConfig(caCertFile string, insecureSkipVerify bool) (*tls.Config, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: insecureSkipVerify,
-	}
-
-	if caCertFile != "" {
-		caCert, err := os.ReadFile(caCertFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read CA cert file: %w", err)
-		}
-
-		caCertPool := x509.NewCertPool()
-		if !caCertPool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("failed to append CA cert to pool")
-		}
-
-		tlsConfig.RootCAs = caCertPool
-	}
-
-	return tlsConfig, nil
-}

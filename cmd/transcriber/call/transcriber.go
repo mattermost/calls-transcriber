@@ -2,10 +2,13 @@ package call
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,16 +65,31 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 	apiClient := model.NewAPIv4Client(cfg.SiteURL)
 	apiClient.SetToken(cfg.AuthToken)
 
-	// Configure TLS if needed
-	if cfg.TLSCACertFile != "" || cfg.TLSInsecureSkipVerify {
-		tlsConfig, err := getTLSConfig(cfg.TLSCACertFile, cfg.TLSInsecureSkipVerify)
+	// Custom transport with optional CA certificate
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+
+	// Configure TLS based on provided settings
+	if cfg.TLSInsecureSkipVerify {
+		slog.Warn("TLS certificate verification is disabled - this should only be used in trusted environments")
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	} else if cfg.TLSCACertFile != "" {
+		caCert, err := os.ReadFile(cfg.TLSCACertFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get TLS config: %w", err)
+			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 		}
-		apiClient.HTTPClient.Transport = &http.Transport{
-			TLSClientConfig: tlsConfig,
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate")
 		}
+		transport.TLSClientConfig = &tls.Config{
+			RootCAs: caCertPool,
+		}
+		slog.Info("loaded CA certificate for TLS", slog.String("path", cfg.TLSCACertFile))
 	}
+
+	apiClient.HTTPClient = &http.Client{Transport: transport}
 
 	t = &Transcriber{
 		cfg:       cfg,
