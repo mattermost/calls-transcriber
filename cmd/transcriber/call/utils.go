@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	httpRequestTimeout          = 5 * time.Second
+	httpRequestTimeout          = 10 * time.Second
 	httpUploadTimeout           = 10 * time.Second
 	uploadRetryAttemptWaitTime  = 5 * time.Second
 	getUserRetryAttemptWaitTime = time.Second
