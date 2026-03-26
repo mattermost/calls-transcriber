@@ -182,13 +182,13 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 			continue
 		}
 		defer resp.Body.Close()
-		cancelCtx()
 
 		if err := json.NewDecoder(resp.Body).Decode(&us); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
 			lastErr = err
 			continue
 		}
+		cancelCtx()
 
 		ctx, cancelCtx = context.WithTimeout(context.Background(), httpUploadTimeout)
 		defer cancelCtx()
@@ -199,7 +199,6 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 			continue
 		}
 		defer resp.Body.Close()
-		cancelCtx()
 
 		var vttFi model.FileInfo
 		if err := json.NewDecoder(resp.Body).Decode(&vttFi); err != nil {
@@ -207,6 +206,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 			lastErr = err
 			continue
 		}
+		cancelCtx()
 
 		// text format upload
 		us = &model.UploadSession{
@@ -229,13 +229,13 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 			continue
 		}
 		defer resp.Body.Close()
-		cancelCtx()
 
 		if err := json.NewDecoder(resp.Body).Decode(&us); err != nil {
 			slog.Error("failed to decode response body", slog.String("err", err.Error()))
 			lastErr = err
 			continue
 		}
+		cancelCtx()
 
 		ctx, cancelCtx = context.WithTimeout(context.Background(), httpUploadTimeout)
 		defer cancelCtx()
@@ -246,7 +246,6 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 			continue
 		}
 		defer resp.Body.Close()
-		cancelCtx()
 
 		var textFi model.FileInfo
 		if err := json.NewDecoder(resp.Body).Decode(&textFi); err != nil {
@@ -254,6 +253,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 			lastErr = err
 			continue
 		}
+		cancelCtx()
 
 		// attaching post VTT and text formatted files.
 		payload, err = json.Marshal(public.TranscribingJobInfo{
