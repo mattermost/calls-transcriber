@@ -436,40 +436,6 @@ func TestFromEnv(t *testing.T) {
 	})
 }
 
-func TestFromEnvTLS(t *testing.T) {
-	t.Run("tls ca cert file", func(t *testing.T) {
-		os.Setenv("TLS_CA_CERT_FILE", "/path/to/cert.pem")
-		defer os.Unsetenv("TLS_CA_CERT_FILE")
-		cfg, err := FromEnv()
-		require.NoError(t, err)
-		require.Equal(t, "/path/to/cert.pem", cfg.TLSCACertFile)
-	})
-
-	t.Run("tls insecure skip verify - true", func(t *testing.T) {
-		os.Setenv("TLS_INSECURE_SKIP_VERIFY", "true")
-		defer os.Unsetenv("TLS_INSECURE_SKIP_VERIFY")
-		cfg, err := FromEnv()
-		require.NoError(t, err)
-		require.True(t, cfg.TLSInsecureSkipVerify)
-	})
-
-	t.Run("tls insecure skip verify - 1", func(t *testing.T) {
-		os.Setenv("TLS_INSECURE_SKIP_VERIFY", "1")
-		defer os.Unsetenv("TLS_INSECURE_SKIP_VERIFY")
-		cfg, err := FromEnv()
-		require.NoError(t, err)
-		require.True(t, cfg.TLSInsecureSkipVerify)
-	})
-
-	t.Run("tls insecure skip verify - false", func(t *testing.T) {
-		os.Setenv("TLS_INSECURE_SKIP_VERIFY", "false")
-		defer os.Unsetenv("TLS_INSECURE_SKIP_VERIFY")
-		cfg, err := FromEnv()
-		require.NoError(t, err)
-		require.False(t, cfg.TLSInsecureSkipVerify)
-	})
-}
-
 func TestCallTranscriberConfigToEnv(t *testing.T) {
 	var cfg CallTranscriberConfig
 	cfg.SiteURL = "http://localhost:8065"

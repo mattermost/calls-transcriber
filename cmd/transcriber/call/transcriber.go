@@ -2,13 +2,10 @@ package call
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,36 +62,6 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 	apiClient := model.NewAPIv4Client(cfg.SiteURL)
 	apiClient.SetToken(cfg.AuthToken)
 
-	// Custom transport with optional CA certificate
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-
-	// Configure TLS based on provided settings
-	if cfg.TLSInsecureSkipVerify {
-		slog.Warn("TLS certificate verification is disabled - this should only be used in trusted environments")
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	} else if cfg.TLSCACertFile != "" {
-		caCert, err := os.ReadFile(cfg.TLSCACertFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
-		}
-		caCertPool, err := x509.SystemCertPool()
-		if err != nil {
-			caCertPool = x509.NewCertPool()
-		}
-		if !caCertPool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("failed to parse CA certificate")
-		}
-		transport.TLSClientConfig = &tls.Config{
-			RootCAs: caCertPool,
-		}
-		transport.ForceAttemptHTTP2 = true
-		slog.Info("loaded CA certificate for TLS", slog.String("path", cfg.TLSCACertFile))
-	}
-
-	apiClient.HTTPClient = &http.Client{Transport: transport}
-
 	t = &Transcriber{
 		cfg:       cfg,
 		apiClient: apiClient,
@@ -115,17 +82,12 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 		return t, err
 	}
 
-	var rtcdClientOpts []client.Option
-	if transport.TLSClientConfig != nil {
-		rtcdClientOpts = append(rtcdClientOpts, client.WithTLSConfig(transport.TLSClientConfig))
-	}
-
 	rtcdClient, err := client.New(client.Config{
 		SiteURL:   cfg.SiteURL,
 		AuthToken: cfg.AuthToken,
 		ChannelID: cfg.CallID,
 		JobID:     cfg.TranscriptionID,
-	}, rtcdClientOpts...)
+	})
 	if err != nil {
 		return t, err
 	}

@@ -1,13 +1,10 @@
 package call
 
 import (
-	"context"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -602,112 +599,3 @@ func TestProcessLiveTrack(t *testing.T) {
 	})
 }
 
-func writeTLSServerCert(t *testing.T, ts *httptest.Server) string {
-	t.Helper()
-	certFile, err := os.CreateTemp("", "test_ca_*.pem")
-	require.NoError(t, err)
-	cert := ts.Certificate()
-	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-	require.NoError(t, err)
-	require.NoError(t, certFile.Close())
-	t.Cleanup(func() { os.Remove(certFile.Name()) })
-	return certFile.Name()
-}
-
-func setupDataDir(t *testing.T) {
-	t.Helper()
-	dir, err := os.MkdirTemp("", "data")
-	require.NoError(t, err)
-	os.Setenv("DATA_DIR", dir)
-	t.Cleanup(func() {
-		os.Unsetenv("DATA_DIR")
-		os.RemoveAll(dir)
-	})
-}
-
-func TestNewTranscriberTLS(t *testing.T) {
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer ts.Close()
-
-	validCertFile := writeTLSServerCert(t, ts)
-
-	baseConfig := func() config.CallTranscriberConfig {
-		cfg := config.CallTranscriberConfig{
-			SiteURL:         ts.URL,
-			CallID:          "8w8jorhr7j83uqr6y1st894hqe",
-			PostID:          "udzdsg7dwidbzcidx5khrf8nee",
-			TranscriptionID: "67t5u6cmtfbb7jug739d43xa9e",
-			AuthToken:       "qj75unbsef83ik9p7ueypb6iyw",
-			NumThreads:      1,
-			ModelSize:       config.ModelSizeTiny,
-		}
-		cfg.SetDefaults()
-		return cfg
-	}
-
-	t.Run("ca cert file - connects successfully", func(t *testing.T) {
-		setupDataDir(t)
-		cfg := baseConfig()
-		cfg.TLSCACertFile = validCertFile
-		tr, err := NewTranscriber(cfg, GetDataDir(""))
-		require.NoError(t, err)
-		require.NotNil(t, tr)
-
-		resp, err := tr.apiClient.DoAPIRequest(context.Background(), "GET", ts.URL+"/", "", "")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-	})
-
-	t.Run("ca cert file - missing file", func(t *testing.T) {
-		setupDataDir(t)
-		cfg := baseConfig()
-		cfg.TLSCACertFile = "/nonexistent/cert.pem"
-		tr, err := NewTranscriber(cfg, GetDataDir(""))
-		require.EqualError(t, err, "failed to read CA certificate: open /nonexistent/cert.pem: no such file or directory")
-		require.Nil(t, tr)
-	})
-
-	t.Run("ca cert file - invalid PEM", func(t *testing.T) {
-		setupDataDir(t)
-		f, err := os.CreateTemp("", "bad_cert_*.pem")
-		require.NoError(t, err)
-		_, err = f.WriteString("not a valid certificate")
-		require.NoError(t, err)
-		require.NoError(t, f.Close())
-		t.Cleanup(func() { os.Remove(f.Name()) })
-
-		cfg := baseConfig()
-		cfg.TLSCACertFile = f.Name()
-		tr, err := NewTranscriber(cfg, GetDataDir(""))
-		require.EqualError(t, err, "failed to parse CA certificate")
-		require.Nil(t, tr)
-	})
-
-	t.Run("insecure skip verify - connects successfully", func(t *testing.T) {
-		setupDataDir(t)
-		cfg := baseConfig()
-		cfg.TLSInsecureSkipVerify = true
-		tr, err := NewTranscriber(cfg, GetDataDir(""))
-		require.NoError(t, err)
-		require.NotNil(t, tr)
-
-		resp, err := tr.apiClient.DoAPIRequest(context.Background(), "GET", ts.URL+"/", "", "")
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
-	})
-
-	t.Run("no tls config - fails without cert", func(t *testing.T) {
-		setupDataDir(t)
-		cfg := baseConfig()
-		tr, err := NewTranscriber(cfg, GetDataDir(""))
-		require.NoError(t, err)
-		require.NotNil(t, tr)
-
-		// Default transport should reject self-signed cert
-		_, err = tr.apiClient.DoAPIRequest(context.Background(), "GET", ts.URL+"/", "", "")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "certificate")
-	})
-}
