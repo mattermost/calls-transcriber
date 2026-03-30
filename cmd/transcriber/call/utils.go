@@ -321,4 +321,3 @@ func (t *Transcriber) getFilenameForCall() (string, error) {
 
 	return filename, nil
 }
-
