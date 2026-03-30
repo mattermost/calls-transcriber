@@ -82,7 +82,6 @@ type CallTranscriberConfig struct {
 	LiveCaptionsNumTranscribers          int
 	LiveCaptionsNumThreadsPerTranscriber int
 	LiveCaptionsLanguage                 string
-
 }
 
 func (p ModelSize) IsValid() bool {

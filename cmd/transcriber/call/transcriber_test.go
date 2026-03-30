@@ -598,4 +598,3 @@ func TestProcessLiveTrack(t *testing.T) {
 		require.Empty(t, tr.trackCtxs)
 	})
 }
-
