@@ -3,15 +3,17 @@ package call
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/mattermost/mattermost-plugin-calls/server/public"
+	"github.com/mattermost/mattermost/server/public/model"
 )
 
-const (
+var (
 	postJobStatusMaxRetries = 2
 	postJobStatusRetryDelay = 2 * time.Second
 )
@@ -39,6 +41,12 @@ func (t *Transcriber) postJobStatus(status public.JobStatus) error {
 			return nil
 		}
 		lastErr = err
+
+		// Don't retry client errors (4xx) as they will always fail.
+		var appErr *model.AppError
+		if errors.As(err, &appErr) && appErr.StatusCode >= 400 && appErr.StatusCode < 500 {
+			break
+		}
 	}
 
 	return fmt.Errorf("request failed: %w", lastErr)
