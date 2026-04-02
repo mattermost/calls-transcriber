@@ -3,10 +3,19 @@ package call
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/mattermost/mattermost-plugin-calls/server/public"
+	"github.com/mattermost/mattermost/server/public/model"
+)
+
+var (
+	postJobStatusMaxRetries = 2
+	postJobStatusRetryDelay = 2 * time.Second
 )
 
 func (t *Transcriber) postJobStatus(status public.JobStatus) error {
@@ -18,16 +27,29 @@ func (t *Transcriber) postJobStatus(status public.JobStatus) error {
 		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
-	ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
-	defer cancelCtx()
-	resp, err := t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL, payload, "")
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	cancelCtx()
+	var lastErr error
+	for attempt := 0; attempt <= postJobStatusMaxRetries; attempt++ {
+		if attempt > 0 {
+			slog.Warn("postJobStatus failed, retrying", slog.Int("attempt", attempt), slog.String("err", lastErr.Error()))
+			time.Sleep(postJobStatusRetryDelay)
+		}
+		ctx, cancelCtx := context.WithTimeout(context.Background(), httpRequestTimeout)
+		resp, err := t.apiClient.DoAPIRequestBytes(ctx, http.MethodPost, apiURL, payload, "")
+		cancelCtx()
+		if err == nil {
+			resp.Body.Close()
+			return nil
+		}
+		lastErr = err
 
-	return nil
+		// Don't retry client errors (4xx) as they will always fail.
+		var appErr *model.AppError
+		if errors.As(err, &appErr) && appErr.StatusCode >= 400 && appErr.StatusCode < 500 {
+			break
+		}
+	}
+
+	return fmt.Errorf("request failed: %w", lastErr)
 }
 
 func (t *Transcriber) ReportJobFailure(errMsg string) error {
