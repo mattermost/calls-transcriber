@@ -25,7 +25,7 @@ func slogReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 	if a.Key == slog.SourceKey {
 		source := a.Value.Any().(*slog.Source)
 		if source.File == "" {
-			// Log from a dependency (e.g. rtcd client).
+			// Log from a dependency (e.g. the LiveKit client).
 			if pc, file, line, ok := runtime.Caller(7); ok {
 				if f := runtime.FuncForPC(pc); f != nil {
 					source.File = filepath.Base(filepath.Dir(file)) + "/" + filepath.Base(file)

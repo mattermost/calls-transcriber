@@ -153,10 +153,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			window = window[:0]
 			prevWindowLen = 0
 			prevTranscribedPos = 0
-			if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
+			if err := t.sendWS(wsEvMetric, public.MetricMsg{
 				SessionID:  ctx.sessionID,
 				MetricName: public.MetricLiveCaptionsWindowDropped,
-			}, false); err != nil {
+			}); err != nil {
 				slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricLiveCaptionsWindowDropped",
 					slog.String("err", err.Error()),
 					slog.String("trackID", ctx.trackID))
@@ -211,10 +211,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		case t.captionsPoolQueueCh <- pkg:
 			break
 		default:
-			if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
+			if err := t.sendWS(wsEvMetric, public.MetricMsg{
 				SessionID:  ctx.sessionID,
 				MetricName: public.MetricLiveCaptionsTranscriberBufFull,
-			}, false); err != nil {
+			}); err != nil {
 				slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
 					slog.String("err", err.Error()),
 					slog.String("trackID", ctx.trackID))
@@ -241,11 +241,11 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 					break
 				}
-				if err := t.client.SendWS(wsEvCaption, public.CaptionMsg{
+				if err := t.sendWS(wsEvCaption, public.CaptionMsg{
 					SessionID:     ctx.sessionID,
 					Text:          text,
 					NewAudioLenMs: float64(newAudioLenMs),
-				}, false); err != nil {
+				}); err != nil {
 					slog.Error("processLiveCaptionsForTrack: error sending ws captions",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
