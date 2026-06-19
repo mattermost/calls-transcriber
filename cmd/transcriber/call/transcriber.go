@@ -136,6 +136,8 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	var connID string
 	select {
 	case connID = <-t.connIDCh:
+	case <-t.doneCh:
+		return fmt.Errorf("transcriber stopped before connecting")
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -185,6 +187,8 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		if err := t.ReportJobStarted(); err != nil {
 			return fmt.Errorf("failed to report job started status: %w", err)
 		}
+	case <-t.doneCh:
+		return fmt.Errorf("transcriber stopped before starting")
 	case <-ctx.Done():
 		return ctx.Err()
 	}

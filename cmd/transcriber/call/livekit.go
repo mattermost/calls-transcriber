@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -42,7 +43,7 @@ func parseLivekitIdentity(identity string) (userID, sessionID string, err error)
 // briefly fail to find the session; we retry a handful of times.
 func (t *Transcriber) fetchLiveKitToken(ctx context.Context, sessionID string) (lkURL, token string, err error) {
 	reqURL := fmt.Sprintf("%s/plugins/%s/livekit-token?channel_id=%s&session_id=%s",
-		t.cfg.SiteURL, pluginID, t.cfg.CallID, sessionID)
+		t.cfg.SiteURL, pluginID, url.QueryEscape(t.cfg.CallID), url.QueryEscape(sessionID))
 
 	for attempt := 0; attempt < livekitTokenRetryAttempts; attempt++ {
 		if attempt > 0 {
