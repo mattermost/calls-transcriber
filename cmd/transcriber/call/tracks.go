@@ -20,7 +20,8 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
 
 	"github.com/mattermost/mattermost/server/public/model"
-	"github.com/mattermost/rtcd/client"
+
+	lksdk "github.com/livekit/server-sdk-go/v2"
 
 	"github.com/streamer45/silero-vad-go/speech"
 
@@ -51,38 +52,33 @@ type trackContext struct {
 	user      *model.User
 }
 
-// handleTrack gets called whenever a new WebRTC track is received (e.g. someone unmuted
-// for the first time). As soon as this happens we start processing the track.
-func (t *Transcriber) handleTrack(ctx any) error {
-	m, ok := ctx.(map[string]any)
-	if !ok || m == nil {
-		return fmt.Errorf("failed to convert map")
-	}
-
-	track, ok := m["track"].(*webrtc.TrackRemote)
-	if !ok || track == nil {
-		return fmt.Errorf("failed to convert track")
-	}
-
+// handleTrack gets called by LiveKit whenever a remote track is subscribed
+// (e.g. someone unmuted for the first time). As soon as this happens we start
+// processing the track. The session/user is derived from the participant
+// identity (composeLivekitIdentity) rather than the track ID.
+func (t *Transcriber) handleTrack(track *webrtc.TrackRemote, pub *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
 	trackID := track.ID()
 
-	trackType, sessionID, err := client.ParseTrackID(trackID)
-	if err != nil {
-		return fmt.Errorf("failed to parse track ID: %w", err)
-	}
-	if trackType != client.TrackTypeVoice {
-		slog.Debug("ignoring non voice track", slog.String("trackID", trackID))
-		return nil
+	if pub.Kind() != lksdk.TrackKindAudio {
+		slog.Debug("ignoring non audio track", slog.String("trackID", trackID))
+		return
 	}
 	if mt := track.Codec().MimeType; mt != webrtc.MimeTypeOpus {
 		slog.Warn("ignoring unsupported mimetype for track", slog.String("mimeType", mt), slog.String("trackID", trackID))
-		return nil
+		return
+	}
+
+	_, sessionID, err := parseLivekitIdentity(rp.Identity())
+	if err != nil {
+		slog.Error("failed to parse participant identity",
+			slog.String("err", err.Error()),
+			slog.String("identity", rp.Identity()),
+			slog.String("trackID", trackID))
+		return
 	}
 
 	t.liveTracksWg.Add(1)
 	go t.processLiveTrack(track, sessionID)
-
-	return nil
 }
 
 // processLiveTrack saves the content of a voice track to a file for later processing.
@@ -239,10 +235,10 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 			select {
 			case pktPayloadCh <- pkt.Payload:
 			default:
-				if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
+				if err := t.sendWS(wsEvMetric, public.MetricMsg{
 					SessionID:  ctx.sessionID,
 					MetricName: public.MetricLiveCaptionsPktPayloadChBufFull,
-				}, false); err != nil {
+				}); err != nil {
 					slog.Error("processLiveTrack: error sending wsEvMetric MetricLiveCaptionsPktPayloadChBufFull",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
