@@ -52,7 +52,9 @@ type Transcriber struct {
 	// media.
 	wsClient *callsWSClient
 	// room is the LiveKit room the bot subscribes to in order to receive audio.
-	room      *lksdk.Room
+	// It is atomic because it is assigned late in Start while other goroutines
+	// (the LiveKit OnDisconnected callback, wsEventLoop) may already call done().
+	room      atomic.Pointer[lksdk.Room]
 	apiClient APIClient
 	apiURL    string
 
@@ -114,7 +116,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 	return
 }
 
-func (t *Transcriber) Start(ctx context.Context) error {
+func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	// 1. Connect to the Mattermost websocket and join the call. The websocket
 	//    carries call signalling (job-state/job-stop/call-end events) and the
 	//    captions/metrics we send back; media flows over LiveKit instead. The
@@ -124,6 +126,13 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect websocket: %w", err)
 	}
+	// Once we've joined, tear down the session / LiveKit room if any later
+	// startup step fails. (main also calls Stop on failure; done is idempotent.)
+	defer func() {
+		if retErr != nil {
+			go t.done()
+		}
+	}()
 	slog.Debug("transcriber ws client connected", slog.String("connID", connID))
 
 	go t.wsEventLoop()
@@ -145,7 +154,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to livekit room: %w", err)
 	}
-	t.room = room
+	t.room.Store(room)
 	slog.Debug("connected to livekit room")
 
 	if t.cfg.LiveCaptionsOn {
@@ -266,8 +275,8 @@ func (t *Transcriber) done() {
 	t.doneOnce.Do(func() {
 		// Disconnecting from the room makes the per-track ReadRTP loops return,
 		// which lets handleClose's wait on liveTracksWg complete.
-		if t.room != nil {
-			t.room.Disconnect()
+		if room := t.room.Load(); room != nil {
+			room.Disconnect()
 		}
 		close(t.captionsPoolDoneCh)
 		t.errCh <- t.handleClose()

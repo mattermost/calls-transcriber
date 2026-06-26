@@ -22,8 +22,6 @@ const (
 	wsMinReconnectInterval = time.Second
 	wsReconnectJitter      = 500 * time.Millisecond
 	wsHelloTimeout         = 10 * time.Second
-
-	wsOutboundBuffer = 256
 )
 
 // callsWSClient is a reconnecting Mattermost-calls WebSocket client built on top
@@ -239,6 +237,12 @@ func (c *callsWSClient) reconnect() bool {
 			"prevConnID":     prevConnID,
 		}); err != nil {
 			slog.Warn("failed to send reconnect message", slog.String("err", err.Error()))
+			// The freshly-dialed socket has no consumer yet; close it before
+			// retrying so we don't leak its reader/writer goroutines.
+			c.mu.Lock()
+			c.ws = nil
+			c.mu.Unlock()
+			ws.Close()
 			continue
 		}
 		return true
