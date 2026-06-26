@@ -2,12 +2,10 @@ package call
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +25,8 @@ const (
 	maxTracksContexes = 256
 
 	// Outgoing WS actions (sent to the plugin).
-	wsEventJoin = wsEvPrefix + "join"
+	wsEventJoin      = wsEvPrefix + "join"
+	wsEventReconnect = wsEvPrefix + "reconnect"
 
 	// Incoming WS events (received from the plugin). Plugin-published events are
 	// automatically prefixed with custom_<pluginID>_ by the server framework.
@@ -47,19 +46,18 @@ type Transcriber struct {
 
 	dataPath string
 
-	// wsClient is the Mattermost websocket connection used for call signalling
-	// (join, job-state/job-stop/call-end events) and for sending captions and
-	// metrics back to the plugin. With LiveKit it no longer carries media.
-	wsClient *model.WebSocketClient
+	// wsClient is the reconnecting Mattermost-calls websocket client used for
+	// call signalling (join, job-state/job-stop/call-end events) and for sending
+	// captions and metrics back to the plugin. With LiveKit it no longer carries
+	// media.
+	wsClient *callsWSClient
 	// room is the LiveKit room the bot subscribes to in order to receive audio.
 	room      *lksdk.Room
 	apiClient APIClient
 	apiURL    string
 
-	connIDCh   chan string
-	connIDOnce sync.Once
-	startedCh  chan struct{}
-	startOnce  sync.Once
+	startedCh chan struct{}
+	startOnce sync.Once
 
 	errCh        chan error
 	doneCh       chan struct{}
@@ -105,7 +103,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 		return t, err
 	}
 
-	t.connIDCh = make(chan string, 1)
+	t.wsClient = newCallsWSClient(cfg.SiteURL, cfg.AuthToken, cfg.CallID, cfg.TranscriptionID)
 	t.startedCh = make(chan struct{})
 	t.errCh = make(chan error, 1)
 	t.doneCh = make(chan struct{})
@@ -117,40 +115,20 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 }
 
 func (t *Transcriber) Start(ctx context.Context) error {
-	// 1. Connect to the Mattermost websocket. This is used for call signalling
-	//    (join + job-state/job-stop/call-end events) and to send captions and
-	//    metrics; media flows over LiveKit instead.
-	wsURL := strings.Replace(t.cfg.SiteURL, "https://", "wss://", 1)
-	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
-	wsClient, err := model.NewWebSocketClient4(wsURL, t.cfg.AuthToken)
+	// 1. Connect to the Mattermost websocket and join the call. The websocket
+	//    carries call signalling (job-state/job-stop/call-end events) and the
+	//    captions/metrics we send back; media flows over LiveKit instead. The
+	//    JobID-gated join registers the bot's call session, which authorizes the
+	//    LiveKit token request below. connID is the bot's session ID.
+	connID, err := t.wsClient.Connect(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create websocket client: %w", err)
-	}
-	t.wsClient = wsClient
-	wsClient.Listen()
-
-	go t.wsEventLoop()
-
-	// 2. Wait for the hello event to learn our connection ID, which doubles as
-	//    the bot's call session ID for the join and token requests below.
-	var connID string
-	select {
-	case connID = <-t.connIDCh:
-	case <-t.doneCh:
-		return fmt.Errorf("transcriber stopped before connecting")
-	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("failed to connect websocket: %w", err)
 	}
 	slog.Debug("transcriber ws client connected", slog.String("connID", connID))
 
-	// 3. Join the call. The JobID-gated bot join registers the bot's call
-	//    session, which authorizes the LiveKit token request that follows.
-	wsClient.SendMessage(wsEventJoin, map[string]any{
-		"channelID": t.cfg.CallID,
-		"jobID":     t.cfg.TranscriptionID,
-	})
+	go t.wsEventLoop()
 
-	// 4. Fetch a subscribe-only LiveKit token and connect to the room.
+	// 2. Fetch a subscribe-only LiveKit token and connect to the room.
 	lkURL, token, err := t.fetchLiveKitToken(ctx, connID)
 	if err != nil {
 		return err
@@ -179,7 +157,7 @@ func (t *Transcriber) Start(ctx context.Context) error {
 		go t.startTranscriberPool()
 	}
 
-	// 5. We are coupling transcribing with recording: we don't start processing
+	// 3. We are coupling transcribing with recording: we don't start processing
 	//    audio until we receive the call job state carrying the (recording)
 	//    start time, which keeps the two jobs in sync.
 	select {
@@ -196,33 +174,18 @@ func (t *Transcriber) Start(ctx context.Context) error {
 	return nil
 }
 
-// wsEventLoop consumes events from the Mattermost websocket and dispatches them.
-// It exits when the transcriber is done or the websocket is closed.
+// wsEventLoop dispatches events from the (reconnecting) websocket client. The
+// client's Events channel is closed when the connection is permanently lost or
+// the client is closed; either way we're then done.
 func (t *Transcriber) wsEventLoop() {
-	for {
-		select {
-		case <-t.doneCh:
-			return
-		case ev, ok := <-t.wsClient.EventChannel:
-			if !ok {
-				slog.Debug("ws event channel closed")
-				go t.done()
-				return
-			}
-			t.handleWSEvent(ev)
-		}
+	for ev := range t.wsClient.Events() {
+		t.handleWSEvent(ev)
 	}
+	go t.done()
 }
 
 func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
 	switch ev.EventType() {
-	case model.WebsocketEventHello:
-		connID, _ := ev.GetData()["connection_id"].(string)
-		if connID != "" {
-			t.connIDOnce.Do(func() {
-				t.connIDCh <- connID
-			})
-		}
 	case wsEventCallJobState:
 		callID, _ := ev.GetData()["callID"].(string)
 		if callID != t.cfg.CallID {
@@ -270,26 +233,9 @@ func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
 	}
 }
 
-// sendWS sends a custom websocket message to the plugin. msg is marshaled to a
-// map[string]any to match the WebSocketClient.SendMessage signature.
+// sendWS sends a custom websocket message to the plugin.
 func (t *Transcriber) sendWS(ev string, msg any) error {
-	if t.wsClient == nil {
-		return fmt.Errorf("ws client not connected")
-	}
-
-	var data map[string]any
-	if msg != nil {
-		b, err := json.Marshal(msg)
-		if err != nil {
-			return fmt.Errorf("failed to marshal ws message (%s): %w", ev, err)
-		}
-		if err := json.Unmarshal(b, &data); err != nil {
-			return fmt.Errorf("failed to unmarshal ws message (%s): %w", ev, err)
-		}
-	}
-
-	t.wsClient.SendMessage(ev, data)
-	return nil
+	return t.wsClient.Send(ev, msg)
 }
 
 func (t *Transcriber) Stop(ctx context.Context) error {
