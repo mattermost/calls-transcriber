@@ -73,6 +73,14 @@ func newCallsWSClient(siteURL, authToken, channelID, jobID string) *callsWSClien
 // session ID) and starts the background run loop. The returned connID is stable
 // across reconnects (resume reuses the original connection ID).
 func (c *callsWSClient) Connect(ctx context.Context) (string, error) {
+	// Defensive guard: Connect is only ever called once per client in practice.
+	c.mu.Lock()
+	if c.originalConnID != "" {
+		c.mu.Unlock()
+		return "", fmt.Errorf("already connected")
+	}
+	c.mu.Unlock()
+
 	ws, connID, err := c.dial(ctx)
 	if err != nil {
 		return "", err

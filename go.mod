@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/livekit/protocol v1.42.3-0.20251023002554-070839e4cae7
 	github.com/livekit/server-sdk-go/v2 v2.12.8
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
 	github.com/mattermost/mattermost/server/public v0.1.10
@@ -52,7 +53,6 @@ require (
 	github.com/lithammer/shortuuid/v4 v4.2.0 // indirect
 	github.com/livekit/mageutil v0.0.0-20250511045019-0f1ff63f7731 // indirect
 	github.com/livekit/mediatransportutil v0.0.0-20250825135402-7bc31f107ade // indirect
-	github.com/livekit/protocol v1.42.3-0.20251023002554-070839e4cae7 // indirect
 	github.com/livekit/psrpc v0.7.0 // indirect
 	github.com/magefile/mage v1.15.0 // indirect
 	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404 // indirect

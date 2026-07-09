@@ -21,6 +21,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"github.com/livekit/protocol/livekit"
 	lksdk "github.com/livekit/server-sdk-go/v2"
 
 	"github.com/streamer45/silero-vad-go/speech"
@@ -61,6 +62,10 @@ func (t *Transcriber) handleTrack(track *webrtc.TrackRemote, pub *lksdk.RemoteTr
 
 	if pub.Kind() != lksdk.TrackKindAudio {
 		slog.Debug("ignoring non audio track", slog.String("trackID", trackID))
+		return
+	}
+	if pub.Source() != livekit.TrackSource_MICROPHONE {
+		slog.Debug("ignoring non-microphone audio track", slog.String("trackID", trackID), slog.String("source", pub.Source().String()))
 		return
 	}
 	if mt := track.Codec().MimeType; mt != webrtc.MimeTypeOpus {

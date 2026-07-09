@@ -199,7 +199,11 @@ func (t *Transcriber) wsEventLoop() {
 func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
 	switch ev.EventType() {
 	case wsEventCallJobState:
-		callID, _ := ev.GetData()["callID"].(string)
+		callID, ok := ev.GetData()["callID"].(string)
+		if !ok {
+			slog.Warn("received call job state with missing or invalid callID", slog.Any("data", ev.GetData()))
+			return
+		}
 		if callID != t.cfg.CallID {
 			// Ignore if the event is not for the current call/channel.
 			return
@@ -231,7 +235,11 @@ func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
 			close(t.startedCh)
 		})
 	case wsEventJobStop:
-		jobID, _ := ev.GetData()["job_id"].(string)
+		jobID, ok := ev.GetData()["job_id"].(string)
+		if !ok {
+			slog.Warn("received job stop with missing or invalid job_id", slog.Any("data", ev.GetData()))
+			return
+		}
 		if jobID == t.cfg.TranscriptionID {
 			slog.Info("received job stop event, exiting")
 			go t.done("")
