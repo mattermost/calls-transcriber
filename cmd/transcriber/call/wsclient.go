@@ -290,6 +290,16 @@ func (c *callsWSClient) Events() <-chan *model.WebSocketEvent {
 	return c.events
 }
 
+// IsClosed reports whether Close has been called on the client.
+func (c *callsWSClient) IsClosed() bool {
+	select {
+	case <-c.closeCh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Close permanently shuts down the client.
 func (c *callsWSClient) Close() {
 	c.closeOnce.Do(func() {

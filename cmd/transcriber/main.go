@@ -112,6 +112,13 @@ func main() {
 
 	select {
 	case <-transcriber.Done():
+		if reason := transcriber.StopReason(); reason != "" {
+			slog.Error("transcriber stopped unexpectedly", slog.String("reason", reason))
+			if err := transcriber.ReportJobFailure(reason); err != nil {
+				slog.Error("failed to report job failure", slog.String("err", err.Error()))
+			}
+			os.Exit(1)
+		}
 		if err := transcriber.Err(); err != nil {
 			slog.Error("transcriber failed", slog.String("err", err.Error()))
 			os.Exit(1)

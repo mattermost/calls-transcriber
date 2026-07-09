@@ -64,6 +64,7 @@ type Transcriber struct {
 	errCh        chan error
 	doneCh       chan struct{}
 	doneOnce     sync.Once
+	stopReason   string
 	liveTracksWg sync.WaitGroup
 	trackCtxs    chan trackContext
 	startTime    atomic.Pointer[time.Time]
@@ -130,7 +131,7 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	// startup step fails. (main also calls Stop on failure; done is idempotent.)
 	defer func() {
 		if retErr != nil {
-			go t.done()
+			go t.done("")
 		}
 	}()
 	slog.Debug("transcriber ws client connected", slog.String("connID", connID))
@@ -148,7 +149,7 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 		},
 		OnDisconnected: func() {
 			slog.Debug("disconnected from livekit room")
-			go t.done()
+			go t.done("livekit room disconnected unexpectedly")
 		},
 	}, lksdk.WithAutoSubscribe(true))
 	if err != nil {
@@ -190,7 +191,9 @@ func (t *Transcriber) wsEventLoop() {
 	for ev := range t.wsClient.Events() {
 		t.handleWSEvent(ev)
 	}
-	go t.done()
+	if !t.wsClient.IsClosed() {
+		go t.done("websocket connection lost unexpectedly")
+	}
 }
 
 func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
@@ -231,14 +234,14 @@ func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
 		jobID, _ := ev.GetData()["job_id"].(string)
 		if jobID == t.cfg.TranscriptionID {
 			slog.Info("received job stop event, exiting")
-			go t.done()
+			go t.done("")
 		}
 	case wsEventCallEnd:
 		if b := ev.GetBroadcast(); b != nil && b.ChannelId != "" && b.ChannelId != t.cfg.CallID {
 			return
 		}
 		slog.Info("received call end event, exiting")
-		go t.done()
+		go t.done("")
 	}
 }
 
@@ -248,7 +251,7 @@ func (t *Transcriber) sendWS(ev string, msg any) error {
 }
 
 func (t *Transcriber) Stop(ctx context.Context) error {
-	go t.done()
+	go t.done("")
 
 	select {
 	case <-t.doneCh:
@@ -262,6 +265,10 @@ func (t *Transcriber) Done() <-chan struct{} {
 	return t.doneCh
 }
 
+func (t *Transcriber) StopReason() string {
+	return t.stopReason
+}
+
 func (t *Transcriber) Err() error {
 	select {
 	case err := <-t.errCh:
@@ -271,8 +278,9 @@ func (t *Transcriber) Err() error {
 	}
 }
 
-func (t *Transcriber) done() {
+func (t *Transcriber) done(reason string) {
 	t.doneOnce.Do(func() {
+		t.stopReason = reason
 		// Disconnecting from the room makes the per-track ReadRTP loops return,
 		// which lets handleClose's wait on liveTracksWg complete.
 		if room := t.room.Load(); room != nil {
