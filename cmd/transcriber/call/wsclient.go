@@ -16,12 +16,14 @@ import (
 )
 
 const (
-	// Window during which we keep trying to resume a dropped connection before
-	// giving up and terminating the job.
+	wsReconnectJitter = 500 * time.Millisecond
+	wsHelloTimeout    = 10 * time.Second
+)
+
+// Default reconnect timing. Exposed as variables so tests can override them.
+var (
 	wsReconnectWindow      = 30 * time.Second
 	wsMinReconnectInterval = time.Second
-	wsReconnectJitter      = 500 * time.Millisecond
-	wsHelloTimeout         = 10 * time.Second
 )
 
 // callsWSClient is a reconnecting Mattermost-calls WebSocket client built on top
