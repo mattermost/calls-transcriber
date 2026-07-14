@@ -147,9 +147,14 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 		ParticipantCallback: lksdk.ParticipantCallback{
 			OnTrackSubscribed: t.handleTrack,
 		},
-		OnDisconnected: func() {
-			slog.Debug("disconnected from livekit room")
-			go t.done("livekit room disconnected unexpectedly")
+		OnDisconnectedWithReason: func(reason lksdk.DisconnectionReason) {
+			slog.Debug("disconnected from livekit room", slog.String("reason", string(reason)))
+			switch reason {
+			case lksdk.RoomClosed, lksdk.LeaveRequested, lksdk.ParticipantRemoved:
+				go t.done("")
+			default:
+				go t.done("livekit room disconnected unexpectedly: " + string(reason))
+			}
 		},
 	}, lksdk.WithAutoSubscribe(true))
 	if err != nil {
