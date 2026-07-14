@@ -16,12 +16,8 @@ import (
 )
 
 const (
-	wsReconnectJitter = 500 * time.Millisecond
-	wsHelloTimeout    = 10 * time.Second
-)
-
-// Default reconnect timing. Exposed as variables so tests can override them.
-var (
+	wsReconnectJitter      = 500 * time.Millisecond
+	wsHelloTimeout         = 10 * time.Second
 	wsReconnectWindow      = 30 * time.Second
 	wsMinReconnectInterval = time.Second
 )
@@ -55,18 +51,24 @@ type callsWSClient struct {
 	events    chan *model.WebSocketEvent
 	closeCh   chan struct{}
 	closeOnce sync.Once
+
+	// Reconnect timing. Overridable in tests via struct fields before Connect.
+	reconnectWindow      time.Duration
+	minReconnectInterval time.Duration
 }
 
 func newCallsWSClient(siteURL, authToken, channelID, jobID string) *callsWSClient {
 	wsURL := strings.Replace(siteURL, "https://", "wss://", 1)
 	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
 	return &callsWSClient{
-		wsURL:     wsURL,
-		authToken: authToken,
-		channelID: channelID,
-		jobID:     jobID,
-		events:    make(chan *model.WebSocketEvent, 64),
-		closeCh:   make(chan struct{}),
+		wsURL:                wsURL,
+		authToken:            authToken,
+		channelID:            channelID,
+		jobID:                jobID,
+		events:               make(chan *model.WebSocketEvent, 64),
+		closeCh:              make(chan struct{}),
+		reconnectWindow:      wsReconnectWindow,
+		minReconnectInterval: wsMinReconnectInterval,
 	}
 }
 
@@ -220,8 +222,8 @@ func (c *callsWSClient) reconnect() bool {
 	prevConnID := c.currentConnID
 	start := time.Now()
 	var interval time.Duration
-	for time.Since(start) < wsReconnectWindow {
-		interval += wsMinReconnectInterval + time.Duration(rand.Int63n(wsReconnectJitter.Milliseconds()))*time.Millisecond
+	for time.Since(start) < c.reconnectWindow {
+		interval += c.minReconnectInterval + time.Duration(rand.Int63n(wsReconnectJitter.Milliseconds()))*time.Millisecond
 		select {
 		case <-c.closeCh:
 			return false

@@ -129,9 +129,11 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	}
 	// Once we've joined, tear down the session / LiveKit room if any later
 	// startup step fails. (main also calls Stop on failure; done is idempotent.)
+	// Synchronous: Start returns only after resources are cleaned up on error,
+	// so the caller never observes a half-started transcriber.
 	defer func() {
 		if retErr != nil {
-			go t.done("")
+			t.done("")
 		}
 	}()
 	slog.Debug("transcriber ws client connected", slog.String("connID", connID))

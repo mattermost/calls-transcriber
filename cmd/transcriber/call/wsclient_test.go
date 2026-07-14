@@ -101,13 +101,6 @@ func TestWSClientConnectTwiceFails(t *testing.T) {
 }
 
 func TestWSClientReconnect(t *testing.T) {
-	wsReconnectWindow = 2 * time.Second
-	wsMinReconnectInterval = 10 * time.Millisecond
-	t.Cleanup(func() {
-		wsReconnectWindow = 30 * time.Second
-		wsMinReconnectInterval = time.Second
-	})
-
 	// dial 1: send hello then close to trigger reconnect
 	// dial 2: send hello for reconnected session
 	srv := newWSTestServer(t, func(conn *websocket.Conn, dialCount int) {
@@ -115,7 +108,7 @@ func TestWSClientReconnect(t *testing.T) {
 		case 1:
 			sendHello(t, conn, "conn-1")
 			// drain the join message then close to trigger reconnect
-			conn.ReadMessage()
+			_, _, _ = conn.ReadMessage()
 			conn.Close()
 		case 2:
 			sendHello(t, conn, "conn-2")
@@ -124,6 +117,8 @@ func TestWSClientReconnect(t *testing.T) {
 	})
 
 	c := newTestClient(t, srv.siteURL())
+	c.reconnectWindow = 2 * time.Second
+	c.minReconnectInterval = 10 * time.Millisecond
 	connID, err := c.Connect(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "conn-1", connID)
@@ -139,23 +134,18 @@ func TestWSClientReconnect(t *testing.T) {
 }
 
 func TestWSClientReconnectWindowExhausted(t *testing.T) {
-	wsReconnectWindow = 100 * time.Millisecond
-	wsMinReconnectInterval = 10 * time.Millisecond
-	t.Cleanup(func() {
-		wsReconnectWindow = 30 * time.Second
-		wsMinReconnectInterval = time.Second
-	})
-
 	// Always close immediately after hello — reconnect will never succeed.
 	srv := newWSTestServer(t, func(conn *websocket.Conn, dialCount int) {
 		if dialCount == 1 {
 			sendHello(t, conn, "conn-1")
-			conn.ReadMessage() // drain join
+			_, _, _ = conn.ReadMessage() // drain join
 		}
 		conn.Close()
 	})
 
 	c := newTestClient(t, srv.siteURL())
+	c.reconnectWindow = 100 * time.Millisecond
+	c.minReconnectInterval = 10 * time.Millisecond
 	_, err := c.Connect(context.Background())
 	require.NoError(t, err)
 
@@ -172,23 +162,18 @@ func TestWSClientReconnectWindowExhausted(t *testing.T) {
 }
 
 func TestWSClientCloseStopsReconnect(t *testing.T) {
-	wsReconnectWindow = 5 * time.Second
-	wsMinReconnectInterval = 10 * time.Millisecond
-	t.Cleanup(func() {
-		wsReconnectWindow = 30 * time.Second
-		wsMinReconnectInterval = time.Second
-	})
-
 	// Always fail reconnect attempts so the client loops until Close() is called.
 	srv := newWSTestServer(t, func(conn *websocket.Conn, dialCount int) {
 		if dialCount == 1 {
 			sendHello(t, conn, "conn-1")
-			conn.ReadMessage() // drain join
+			_, _, _ = conn.ReadMessage() // drain join
 		}
 		conn.Close()
 	})
 
 	c := newTestClient(t, srv.siteURL())
+	c.reconnectWindow = 5 * time.Second
+	c.minReconnectInterval = 10 * time.Millisecond
 	_, err := c.Connect(context.Background())
 	require.NoError(t, err)
 
@@ -215,7 +200,7 @@ func TestWSClientSend(t *testing.T) {
 	srv := newWSTestServer(t, func(conn *websocket.Conn, _ int) {
 		sendHello(t, conn, "conn-1")
 		// read join, then read the test message
-		conn.ReadMessage()
+		_, _, _ = conn.ReadMessage()
 		_, msg, err := conn.ReadMessage()
 		if err == nil {
 			var m map[string]any
