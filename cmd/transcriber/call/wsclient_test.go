@@ -14,7 +14,7 @@ import (
 )
 
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(_ *http.Request) bool { return true },
 }
 
 // wsTestServer runs a minimal Mattermost-protocol WebSocket server for testing.
@@ -107,8 +107,10 @@ func TestWSClientReconnect(t *testing.T) {
 		switch dialCount {
 		case 1:
 			sendHello(t, conn, "conn-1")
-			// drain the join message then close to trigger reconnect
-			_, _, _ = conn.ReadMessage()
+			// model.WebSocketClient sends an auth challenge on every dial before
+			// returning; drain it, then the join, before closing to trigger reconnect.
+			_, _, _ = conn.ReadMessage() // auth challenge
+			_, _, _ = conn.ReadMessage() // join
 			conn.Close()
 		case 2:
 			sendHello(t, conn, "conn-2")
@@ -123,21 +125,21 @@ func TestWSClientReconnect(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "conn-1", connID)
 
-	// wait for reconnect and verify we receive an event on the second connection
-	// by sending one from the test server after reconnect
-	// give reconnect time to complete
-	time.Sleep(200 * time.Millisecond)
+	// wsReconnectJitter is up to 500ms so poll instead of sleeping a fixed amount.
+	require.Eventually(t, func() bool {
+		return srv.dials.Load() >= 2
+	}, 2*time.Second, 20*time.Millisecond, "expected reconnect within 2s")
 
-	require.Equal(t, int32(2), srv.dials.Load())
 	require.False(t, c.IsClosed())
 	c.Close()
 }
 
 func TestWSClientReconnectWindowExhausted(t *testing.T) {
-	// Always close immediately after hello — reconnect will never succeed.
+	// Always close after hello — reconnect will never succeed.
 	srv := newWSTestServer(t, func(conn *websocket.Conn, dialCount int) {
 		if dialCount == 1 {
 			sendHello(t, conn, "conn-1")
+			_, _, _ = conn.ReadMessage() // drain auth challenge
 			_, _, _ = conn.ReadMessage() // drain join
 		}
 		conn.Close()
@@ -166,6 +168,7 @@ func TestWSClientCloseStopsReconnect(t *testing.T) {
 	srv := newWSTestServer(t, func(conn *websocket.Conn, dialCount int) {
 		if dialCount == 1 {
 			sendHello(t, conn, "conn-1")
+			_, _, _ = conn.ReadMessage() // drain auth challenge
 			_, _, _ = conn.ReadMessage() // drain join
 		}
 		conn.Close()
@@ -199,9 +202,10 @@ func TestWSClientSend(t *testing.T) {
 
 	srv := newWSTestServer(t, func(conn *websocket.Conn, _ int) {
 		sendHello(t, conn, "conn-1")
-		// read join, then read the test message
-		_, _, _ = conn.ReadMessage()
-		_, msg, err := conn.ReadMessage()
+		// model.WebSocketClient sends auth challenge then join before any app message.
+		_, _, _ = conn.ReadMessage() // auth challenge
+		_, _, _ = conn.ReadMessage() // join
+		_, msg, err := conn.ReadMessage() // test_action
 		if err == nil {
 			var m map[string]any
 			if json.Unmarshal(msg, &m) == nil {
