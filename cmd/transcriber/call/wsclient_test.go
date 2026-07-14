@@ -203,8 +203,8 @@ func TestWSClientSend(t *testing.T) {
 	srv := newWSTestServer(t, func(conn *websocket.Conn, _ int) {
 		sendHello(t, conn, "conn-1")
 		// model.WebSocketClient sends auth challenge then join before any app message.
-		_, _, _ = conn.ReadMessage() // auth challenge
-		_, _, _ = conn.ReadMessage() // join
+		_, _, _ = conn.ReadMessage()      // auth challenge
+		_, _, _ = conn.ReadMessage()      // join
 		_, msg, err := conn.ReadMessage() // test_action
 		if err == nil {
 			var m map[string]any
