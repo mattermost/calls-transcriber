@@ -25,7 +25,7 @@ func slogReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 	if a.Key == slog.SourceKey {
 		source := a.Value.Any().(*slog.Source)
 		if source.File == "" {
-			// Log from a dependency (e.g. rtcd client).
+			// Log from a dependency (e.g. the LiveKit client).
 			if pc, file, line, ok := runtime.Caller(7); ok {
 				if f := runtime.FuncForPC(pc); f != nil {
 					source.File = filepath.Base(filepath.Dir(file)) + "/" + filepath.Base(file)
@@ -112,6 +112,13 @@ func main() {
 
 	select {
 	case <-transcriber.Done():
+		if reason := transcriber.StopReason(); reason != "" {
+			slog.Error("transcriber stopped unexpectedly", slog.String("reason", reason))
+			if err := transcriber.ReportJobFailure(reason); err != nil {
+				slog.Error("failed to report job failure", slog.String("err", err.Error()))
+			}
+			os.Exit(1)
+		}
 		if err := transcriber.Err(); err != nil {
 			slog.Error("transcriber failed", slog.String("err", err.Error()))
 			os.Exit(1)
