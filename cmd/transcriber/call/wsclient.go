@@ -211,6 +211,7 @@ func (c *callsWSClient) consume(ws *model.WebSocketClient) (dropped bool) {
 			}
 		case <-ws.PingTimeoutChannel:
 			slog.Warn("calls websocket ping timeout")
+			return true
 		}
 	}
 }

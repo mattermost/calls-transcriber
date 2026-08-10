@@ -90,6 +90,8 @@ func (t *Transcriber) handleTrack(track *webrtc.TrackRemote, pub *lksdk.RemoteTr
 // This involves muxing the raw Opus packets into a OGG file with the
 // timings adjusted to account for any potential gaps due to mute/unmute sequences.
 func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
+	defer t.liveTracksWg.Done()
+
 	ctx := trackContext{
 		trackID:   track.ID(),
 		sessionID: sessionID,
@@ -124,8 +126,6 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 		} else {
 			slog.Debug("nothing to send", slog.String("trackID", ctx.trackID))
 		}
-
-		t.liveTracksWg.Done()
 	}()
 
 	oggWriter, err := ogg.NewWriter(ctx.filename, trackInAudioRate, trackAudioChannels)

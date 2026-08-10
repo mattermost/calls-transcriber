@@ -138,8 +138,6 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	}()
 	slog.Debug("transcriber ws client connected", slog.String("connID", connID))
 
-	go t.wsEventLoop()
-
 	// 2. Fetch a subscribe-only LiveKit token and connect to the room.
 	lkURL, token, err := t.fetchLiveKitToken(ctx, connID)
 	if err != nil {
@@ -164,6 +162,10 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	}
 	t.room.Store(room)
 	slog.Debug("connected to livekit room")
+
+	// Start the event loop after the room is stored so that done() is never
+	// called with a nil room (which would skip Disconnect and leak the session).
+	go t.wsEventLoop()
 
 	if t.cfg.LiveCaptionsOn {
 		slog.Debug("LiveCaptionsOn is true; starting transcriber pool.",
@@ -252,7 +254,7 @@ func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
 			go t.done("")
 		}
 	case wsEventCallEnd:
-		if b := ev.GetBroadcast(); b != nil && b.ChannelId != "" && b.ChannelId != t.cfg.CallID {
+		if b := ev.GetBroadcast(); b == nil || b.ChannelId != t.cfg.CallID {
 			return
 		}
 		slog.Info("received call end event, exiting")
