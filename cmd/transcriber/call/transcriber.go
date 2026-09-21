@@ -32,7 +32,7 @@ const (
 	// automatically prefixed with custom_<pluginID>_ by the server framework.
 	wsEventCallJobState = wsEvPrefix + "call_job_state"
 	wsEventJobStop      = wsEvPrefix + "job_stop"
-	wsEventCallEnd      = wsEvPrefix + "call_ended"
+	wsEventCallEnd      = wsEvPrefix + "call_end"
 )
 
 type APIClient interface {
