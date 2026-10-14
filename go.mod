@@ -4,7 +4,6 @@ go 1.25.0
 
 require (
 	github.com/Microsoft/cognitive-services-speech-sdk-go v1.33.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/livekit/protocol v1.42.3-0.20251023002554-070839e4cae7
 	github.com/livekit/server-sdk-go/v2 v2.12.8
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
@@ -42,6 +41,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

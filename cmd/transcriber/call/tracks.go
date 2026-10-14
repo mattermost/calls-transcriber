@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mattermost/mattermost-plugin-calls/server/public"
-
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/azure"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/apis/whisper.cpp"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
@@ -240,14 +238,9 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 			select {
 			case pktPayloadCh <- pkt.Payload:
 			default:
-				if err := t.sendWS(wsEvMetric, public.MetricMsg{
-					SessionID:  ctx.sessionID,
-					MetricName: public.MetricLiveCaptionsPktPayloadChBufFull,
-				}); err != nil {
-					slog.Error("processLiveTrack: error sending wsEvMetric MetricLiveCaptionsPktPayloadChBufFull",
-						slog.String("err", err.Error()),
-						slog.String("trackID", ctx.trackID))
-				}
+				// TODO: report a pkt-payload-chan-full metric once metrics have a non-websocket path.
+				slog.Warn("processLiveTrack: live captions packet buffer full",
+					slog.String("trackID", ctx.trackID))
 			}
 		}
 	}

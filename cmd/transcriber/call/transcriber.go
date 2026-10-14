@@ -2,6 +2,7 @@ package call
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,20 +20,7 @@ import (
 
 const (
 	pluginID          = "com.mattermost.calls"
-	wsEvPrefix        = "custom_" + pluginID + "_"
-	wsEvCaption       = wsEvPrefix + "caption"
-	wsEvMetric        = wsEvPrefix + "metric"
 	maxTracksContexes = 256
-
-	// Outgoing WS actions (sent to the plugin).
-	wsEventJoin      = wsEvPrefix + "join"
-	wsEventReconnect = wsEvPrefix + "reconnect"
-
-	// Incoming WS events (received from the plugin). Plugin-published events are
-	// automatically prefixed with custom_<pluginID>_ by the server framework.
-	wsEventCallJobState = wsEvPrefix + "call_job_state"
-	wsEventJobStop      = wsEvPrefix + "job_stop"
-	wsEventCallEnd      = wsEvPrefix + "call_end"
 )
 
 type APIClient interface {
@@ -46,20 +34,18 @@ type Transcriber struct {
 
 	dataPath string
 
-	// wsClient is the reconnecting Mattermost-calls websocket client used for
-	// call signalling (join, job-state/job-stop/call-end events) and for sending
-	// captions and metrics back to the plugin. With LiveKit it no longer carries
-	// media.
-	wsClient *callsWSClient
 	// room is the LiveKit room the bot subscribes to in order to receive audio.
 	// It is atomic because it is assigned late in Start while other goroutines
-	// (the LiveKit OnDisconnected callback, wsEventLoop) may already call done().
+	// (the LiveKit callbacks) may already call done().
 	room      atomic.Pointer[lksdk.Room]
 	apiClient APIClient
 	apiURL    string
 
 	startedCh chan struct{}
 	startOnce sync.Once
+	// transcriptionSeen records that the transcription job has been observed in
+	// the room metadata. Its later absence means the job has ended.
+	transcriptionSeen atomic.Bool
 
 	errCh        chan error
 	doneCh       chan struct{}
@@ -106,7 +92,6 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 		return t, err
 	}
 
-	t.wsClient = newCallsWSClient(cfg.SiteURL, cfg.AuthToken, cfg.CallID, cfg.TranscriptionID)
 	t.startedCh = make(chan struct{})
 	t.errCh = make(chan error, 1)
 	t.doneCh = make(chan struct{})
@@ -118,35 +103,38 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 }
 
 func (t *Transcriber) Start(ctx context.Context) (retErr error) {
-	// 1. Connect to the Mattermost websocket and join the call. The websocket
-	//    carries call signalling (job-state/job-stop/call-end events) and the
-	//    captions/metrics we send back; media flows over LiveKit instead. The
-	//    JobID-gated join registers the bot's call session, which authorizes the
-	//    LiveKit token request below. connID is the bot's session ID.
-	connID, err := t.wsClient.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to connect websocket: %w", err)
+	if t.cfg.LiveCaptionsOn {
+		// TODO(MM-71164 phase 2): deliver captions over LiveKit data messages.
+		slog.Warn("LiveCaptionsOn is set but live captions are not supported without the websocket yet; skipping")
+		t.cfg.LiveCaptionsOn = false
 	}
-	// Once we've joined, tear down the session / LiveKit room if any later
-	// startup step fails. (main also calls Stop on failure; done is idempotent.)
-	// Synchronous: Start returns only after resources are cleaned up on error,
-	// so the caller never observes a half-started transcriber.
+
+	// 1. Join the call over HTTP. This creates the bot's call session and
+	//    returns a subscribe-only LiveKit token. It is rejected if the job was
+	//    already stopped or started.
+	session, err := t.createLiveKitSession(ctx)
+	if err != nil {
+		return err
+	}
+	slog.Debug("created livekit session", slog.String("sessionID", session.SessionID))
+
+	// Tear down the LiveKit room if any later startup step fails. (main also
+	// calls Stop on failure; done is idempotent.) Synchronous: Start returns only
+	// after resources are cleaned up on error, so the caller never observes a
+	// half-started transcriber.
 	defer func() {
 		if retErr != nil {
 			t.done("")
 		}
 	}()
-	slog.Debug("transcriber ws client connected", slog.String("connID", connID))
 
-	// 2. Fetch a subscribe-only LiveKit token and connect to the room.
-	lkURL, token, err := t.fetchLiveKitToken(ctx, connID)
-	if err != nil {
-		return err
-	}
-	room, err := lksdk.ConnectToRoomWithToken(lkURL, token, &lksdk.RoomCallback{
+	// 2. Connect to the LiveKit room. Call signalling (job state, stop) arrives
+	//    through room metadata and participant removal.
+	room, err := lksdk.ConnectToRoomWithToken(session.URL, session.Token, &lksdk.RoomCallback{
 		ParticipantCallback: lksdk.ParticipantCallback{
 			OnTrackSubscribed: t.handleTrack,
 		},
+		OnRoomMetadataChanged: t.handleRoomMetadata,
 		OnDisconnectedWithReason: func(reason lksdk.DisconnectionReason) {
 			slog.Debug("disconnected from livekit room", slog.String("reason", string(reason)))
 			switch reason {
@@ -163,22 +151,15 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	t.room.Store(room)
 	slog.Debug("connected to livekit room")
 
-	// Start the event loop after the room is stored so that done() is never
-	// called with a nil room (which would skip Disconnect and leak the session).
-	go t.wsEventLoop()
-
-	if t.cfg.LiveCaptionsOn {
-		slog.Debug("LiveCaptionsOn is true; starting transcriber pool.",
-			slog.String("LiveCaptionsModelSize", string(t.cfg.LiveCaptionsModelSize)),
-			slog.Int("LiveCaptionsNumTranscribers", t.cfg.LiveCaptionsNumTranscribers),
-			slog.Int("LiveCaptionsNumThreadsPerTranscriber", t.cfg.LiveCaptionsNumThreadsPerTranscriber),
-			slog.String("LiveCaptionsLanguage", t.cfg.LiveCaptionsLanguage))
-		go t.startTranscriberPool()
-	}
+	// The initial state doesn't go through the metadata callback. The call state
+	// from the join response is the freshest view; the room metadata may not
+	// have been published yet.
+	t.handleJobs(session.CallState)
+	t.handleRoomMetadata(room.Metadata())
 
 	// 3. We are coupling transcribing with recording: we don't start processing
-	//    audio until we receive the call job state carrying the (recording)
-	//    start time, which keeps the two jobs in sync.
+	//    audio until the recording job state carries a start time, which keeps
+	//    the two jobs in sync.
 	select {
 	case <-t.startedCh:
 		if err := t.ReportJobStarted(); err != nil {
@@ -193,78 +174,48 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	return nil
 }
 
-// wsEventLoop dispatches events from the (reconnecting) websocket client. The
-// client's Events channel is closed when the connection is permanently lost or
-// the client is closed; either way we're then done.
-func (t *Transcriber) wsEventLoop() {
-	for ev := range t.wsClient.Events() {
-		t.handleWSEvent(ev)
+// handleRoomMetadata processes a LiveKit room metadata update.
+func (t *Transcriber) handleRoomMetadata(metadata string) {
+	if metadata == "" {
+		return
 	}
-	if !t.wsClient.IsClosed() {
-		go t.done("websocket connection lost unexpectedly")
+	var jobs liveKitJobs
+	if err := json.Unmarshal([]byte(metadata), &jobs); err != nil {
+		slog.Warn("failed to parse room metadata", slog.String("err", err.Error()))
+		return
 	}
+	t.handleJobs(jobs)
 }
 
-func (t *Transcriber) handleWSEvent(ev *model.WebSocketEvent) {
-	switch ev.EventType() {
-	case wsEventCallJobState:
-		callID, ok := ev.GetData()["callID"].(string)
-		if !ok {
-			slog.Warn("received call job state with missing or invalid callID", slog.Any("data", ev.GetData()))
-			return
-		}
-		if callID != t.cfg.CallID {
-			// Ignore if the event is not for the current call/channel.
-			return
-		}
-
-		jobState, ok := ev.GetData()["jobState"].(map[string]any)
-		if !ok {
-			slog.Warn("received call job state with invalid jobState", slog.Any("data", ev.GetData()))
-			return
-		}
-
-		// Note: start_at is the absolute timestamp of when the recording started
-		// to process but could come from a different instance and potentially
-		// suffer from clock skew. Using time.Now() may be more precise but it
-		// requires us to guarantee that the transcribing job starts before the
-		// recording does.
-		startAt, _ := jobState["start_at"].(float64)
-		if startAt <= 0 {
-			return
-		}
-
-		slog.Debug("received call job state", slog.Any("jobState", jobState))
-
-		t.startOnce.Do(func() {
-			// We are coupling transcribing with recording. This means that we
-			// won't start unless a recording is ongoing.
-			slog.Debug("updating startAt to be in sync with recording", slog.Float64("startAt", startAt))
-			t.startTime.Store(newTimeP(time.UnixMilli(int64(startAt))))
-			close(t.startedCh)
-		})
-	case wsEventJobStop:
-		jobID, ok := ev.GetData()["job_id"].(string)
-		if !ok {
-			slog.Warn("received job stop with missing or invalid job_id", slog.Any("data", ev.GetData()))
-			return
-		}
-		if jobID == t.cfg.TranscriptionID {
-			slog.Info("received job stop event, exiting")
-			go t.done("")
-		}
-	case wsEventCallEnd:
-		if b := ev.GetBroadcast(); b == nil || b.ChannelId != t.cfg.CallID {
-			return
-		}
-		slog.Info("received call end event, exiting")
+func (t *Transcriber) handleJobs(jobs liveKitJobs) {
+	// Room metadata only carries active jobs, so an ended transcription job
+	// disappears. The first publish can lag behind job creation, so absence only
+	// counts as a stop signal once the job has been seen. This is a backstop;
+	// the primary stop signal is the bot being removed from the room.
+	if jobs.Transcription != nil {
+		t.transcriptionSeen.Store(true)
+	} else if t.transcriptionSeen.Load() {
+		slog.Info("transcription job no longer in room metadata, exiting")
 		go t.done("")
+		return
 	}
-}
 
-// sendWS sends a custom websocket message to the plugin.
-func (t *Transcriber) sendWS(ev string, msg any) error {
-	return t.wsClient.Send(ev, msg)
+	// Note: start_at is the absolute timestamp of when the recording started
+	// to process but could come from a different instance and potentially
+	// suffer from clock skew. Using time.Now() may be more precise but it
+	// requires us to guarantee that the transcribing job starts before the
+	// recording does.
+	if jobs.Recording == nil || jobs.Recording.StartAt <= 0 {
+		return
+	}
+
+	t.startOnce.Do(func() {
+		// We are coupling transcribing with recording. This means that we
+		// won't start unless a recording is ongoing.
+		slog.Debug("updating startAt to be in sync with recording", slog.Int64("startAt", jobs.Recording.StartAt))
+		t.startTime.Store(newTimeP(time.UnixMilli(jobs.Recording.StartAt)))
+		close(t.startedCh)
+	})
 }
 
 func (t *Transcriber) Stop(ctx context.Context) error {
@@ -305,9 +256,6 @@ func (t *Transcriber) done(reason string) {
 		}
 		close(t.captionsPoolDoneCh)
 		t.errCh <- t.handleClose()
-		if t.wsClient != nil {
-			t.wsClient.Close()
-		}
 		close(t.doneCh)
 	})
 }

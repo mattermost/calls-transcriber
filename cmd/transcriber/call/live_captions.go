@@ -7,7 +7,6 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/opus"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
-	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
 	"path/filepath"
@@ -153,14 +152,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			window = window[:0]
 			prevWindowLen = 0
 			prevTranscribedPos = 0
-			if err := t.sendWS(wsEvMetric, public.MetricMsg{
-				SessionID:  ctx.sessionID,
-				MetricName: public.MetricLiveCaptionsWindowDropped,
-			}); err != nil {
-				slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricLiveCaptionsWindowDropped",
-					slog.String("err", err.Error()),
-					slog.String("trackID", ctx.trackID))
-			}
+			// TODO: report a window-dropped metric once metrics have a non-websocket path.
+			slog.Warn("processLiveCaptionsForTrack: window dropped",
+				slog.String("trackID", ctx.trackID))
 			continue
 		}
 
@@ -211,14 +205,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		case t.captionsPoolQueueCh <- pkg:
 			break
 		default:
-			if err := t.sendWS(wsEvMetric, public.MetricMsg{
-				SessionID:  ctx.sessionID,
-				MetricName: public.MetricLiveCaptionsTranscriberBufFull,
-			}); err != nil {
-				slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
-					slog.String("err", err.Error()),
-					slog.String("trackID", ctx.trackID))
-			}
+			// TODO: report a buffer-full metric once metrics have a non-websocket path.
+			slog.Warn("processLiveCaptionsForTrack: transcriber queue full",
+				slog.String("trackID", ctx.trackID))
 			close(transcribedCh)
 		}
 
@@ -241,15 +230,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 					break
 				}
-				if err := t.sendWS(wsEvCaption, public.CaptionMsg{
-					SessionID:     ctx.sessionID,
-					Text:          text,
-					NewAudioLenMs: float64(newAudioLenMs),
-				}); err != nil {
-					slog.Error("processLiveCaptionsForTrack: error sending ws captions",
-						slog.String("err", err.Error()),
-						slog.String("trackID", ctx.trackID))
-				}
+				// TODO(MM-71164 phase 2): publish the caption over LiveKit data messages.
+				slog.Debug("processLiveCaptionsForTrack: caption dropped, LiveKit delivery not implemented",
+					slog.String("trackID", ctx.trackID),
+					slog.Float64("newAudioLenMs", float64(newAudioLenMs)))
 			}
 
 			// We've processed text, so we're finished.

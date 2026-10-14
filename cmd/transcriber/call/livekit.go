@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -29,33 +28,57 @@ func parseLivekitIdentity(identity string) (userID, sessionID string, err error)
 	return parts[0], parts[1], nil
 }
 
-// fetchLiveKitToken requests a subscribe-only LiveKit access token (and the
-// bot-specific LiveKit URL) for the bot's call session from the plugin. The
-// bot's authorization is established by the JobID-gated join performed before
-// this call, which registers the call session referenced by sessionID.
-func (t *Transcriber) fetchLiveKitToken(ctx context.Context, sessionID string) (string, string, error) {
-	reqURL := fmt.Sprintf("%s/plugins/%s/livekit-token?channel_id=%s&session_id=%s",
-		t.cfg.SiteURL, pluginID, url.QueryEscape(t.cfg.CallID), url.QueryEscape(sessionID))
+// liveKitJobState mirrors the plugin's JobStateClient, which is used both in
+// the room metadata and in the call state returned by POST /livekit-token.
+type liveKitJobState struct {
+	StartAt int64 `json:"start_at"`
+	EndAt   int64 `json:"end_at"`
+}
+
+// liveKitJobs holds the job states carried by the room metadata and call state.
+// Only active jobs are present: a job that ended or failed is omitted.
+type liveKitJobs struct {
+	Recording     *liveKitJobState `json:"recording,omitempty"`
+	Transcription *liveKitJobState `json:"transcription,omitempty"`
+}
+
+type liveKitSession struct {
+	SessionID string      `json:"session_id"`
+	Token     string      `json:"token"`
+	URL       string      `json:"url"`
+	CallState liveKitJobs `json:"call_state"`
+}
+
+// createLiveKitSession joins the call through the plugin's HTTP API. The
+// request is authorized by the bot token and gated by the transcription job ID.
+// The plugin creates the bot's call session and returns its ID along with a
+// subscribe-only LiveKit token and the bot-specific LiveKit URL.
+func (t *Transcriber) createLiveKitSession(ctx context.Context) (*liveKitSession, error) {
+	reqURL := fmt.Sprintf("%s/plugins/%s/livekit-token", t.cfg.SiteURL, pluginID)
+	body, err := json.Marshal(map[string]string{
+		"channel_id": t.cfg.CallID,
+		"job_id":     t.cfg.TranscriptionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal livekit session request: %w", err)
+	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, httpRequestTimeout)
 	defer cancel()
 
-	resp, err := t.apiClient.DoAPIRequest(reqCtx, http.MethodGet, reqURL, "", "")
+	resp, err := t.apiClient.DoAPIRequestBytes(reqCtx, http.MethodPost, reqURL, body, "")
 	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch livekit token: %w", err)
+		return nil, fmt.Errorf("failed to create livekit session: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Token string `json:"token"`
-		URL   string `json:"url"`
+	var session liveKitSession
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		return nil, fmt.Errorf("failed to decode livekit session response: %w", err)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", "", fmt.Errorf("failed to decode livekit token response: %w", err)
-	}
-	if result.URL == "" || result.Token == "" {
-		return "", "", fmt.Errorf("invalid livekit token response: empty url or token")
+	if session.URL == "" || session.Token == "" {
+		return nil, fmt.Errorf("invalid livekit session response: empty url or token")
 	}
 
-	return result.URL, result.Token, nil
+	return &session, nil
 }
