@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	lksdk "github.com/livekit/server-sdk-go/v2"
+
 	mocks "github.com/mattermost/calls-transcriber/cmd/transcriber/mocks/github.com/mattermost/calls-transcriber/cmd/transcriber/call"
 
 	"github.com/stretchr/testify/mock"
@@ -113,4 +115,72 @@ func TestHandleRoomMetadata(t *testing.T) {
 		require.True(t, isDone(tr))
 		require.Equal(t, "", tr.StopReason())
 	})
+}
+
+func TestHandleJobs(t *testing.T) {
+	t.Run("recording already started in the join response call state", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+		tr.handleJobs(liveKitJobs{
+			Recording:     &liveKitJobState{StartAt: 1700000000000},
+			Transcription: &liveKitJobState{},
+		})
+		select {
+		case <-tr.startedCh:
+		default:
+			t.Fatal("expected transcriber to be started")
+		}
+		require.Equal(t, time.UnixMilli(1700000000000), *tr.startTime.Load())
+	})
+
+	t.Run("recording not started in the join response call state", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+		tr.handleJobs(liveKitJobs{
+			Recording:     &liveKitJobState{},
+			Transcription: &liveKitJobState{},
+		})
+		select {
+		case <-tr.startedCh:
+			t.Fatal("transcriber should not be started")
+		default:
+		}
+		require.Nil(t, tr.startTime.Load())
+	})
+
+	t.Run("transcription seen in call state then absent from metadata stops", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+		tr.handleJobs(liveKitJobs{Transcription: &liveKitJobState{}})
+		tr.handleRoomMetadata(`{"host_id":"h"}`)
+		select {
+		case <-tr.doneCh:
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("expected transcriber to be done")
+		}
+	})
+}
+
+func TestHandleDisconnect(t *testing.T) {
+	tcs := []struct {
+		reason     lksdk.DisconnectionReason
+		stopReason string
+	}{
+		{lksdk.ParticipantRemoved, ""},
+		{lksdk.RoomClosed, ""},
+		{lksdk.LeaveRequested, ""},
+		{lksdk.Failed, "livekit room disconnected unexpectedly: connection to room failed"},
+		{lksdk.DuplicateIdentity, "livekit room disconnected unexpectedly: duplicate identity"},
+		{lksdk.OtherReason, "livekit room disconnected unexpectedly: other reasons"},
+	}
+
+	for _, tc := range tcs {
+		t.Run(string(tc.reason), func(t *testing.T) {
+			tr := setupTranscriberForTest(t)
+			tr.handleDisconnect(tc.reason)
+			select {
+			case <-tr.doneCh:
+			case <-time.After(2 * time.Second):
+				t.Fatal("expected transcriber to be done")
+			}
+			require.Equal(t, tc.stopReason, tr.StopReason())
+		})
+	}
 }

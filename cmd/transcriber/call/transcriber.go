@@ -134,16 +134,8 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 		ParticipantCallback: lksdk.ParticipantCallback{
 			OnTrackSubscribed: t.handleTrack,
 		},
-		OnRoomMetadataChanged: t.handleRoomMetadata,
-		OnDisconnectedWithReason: func(reason lksdk.DisconnectionReason) {
-			slog.Debug("disconnected from livekit room", slog.String("reason", string(reason)))
-			switch reason {
-			case lksdk.RoomClosed, lksdk.LeaveRequested, lksdk.ParticipantRemoved:
-				go t.done("")
-			default:
-				go t.done("livekit room disconnected unexpectedly: " + string(reason))
-			}
-		},
+		OnRoomMetadataChanged:    t.handleRoomMetadata,
+		OnDisconnectedWithReason: t.handleDisconnect,
 	}, lksdk.WithAutoSubscribe(true))
 	if err != nil {
 		return fmt.Errorf("failed to connect to livekit room: %w", err)
@@ -172,6 +164,19 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	}
 
 	return nil
+}
+
+// handleDisconnect handles being disconnected from the LiveKit room. The bot
+// being removed (the plugin evicts it to stop the job), the room closing and
+// leaving are clean exits; anything else fails the job.
+func (t *Transcriber) handleDisconnect(reason lksdk.DisconnectionReason) {
+	slog.Debug("disconnected from livekit room", slog.String("reason", string(reason)))
+	switch reason {
+	case lksdk.RoomClosed, lksdk.LeaveRequested, lksdk.ParticipantRemoved:
+		go t.done("")
+	default:
+		go t.done("livekit room disconnected unexpectedly: " + string(reason))
+	}
 }
 
 // handleRoomMetadata processes a LiveKit room metadata update.
