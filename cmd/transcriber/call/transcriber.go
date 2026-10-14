@@ -33,6 +33,19 @@ var ErrStoppedBeforeStart = errors.New("transcriber stopped before starting")
 type roomConn interface {
 	Disconnect()
 	Metadata() string
+	// PublishData publishes a data message to the whole room.
+	PublishData(payload []byte, topic string, reliable bool) error
+}
+
+// liveKitRoom is a connected *lksdk.Room that satisfies roomConn.
+type liveKitRoom struct {
+	*lksdk.Room
+}
+
+func (r *liveKitRoom) PublishData(payload []byte, topic string, reliable bool) error {
+	return r.LocalParticipant.PublishData(payload,
+		lksdk.WithDataPublishTopic(topic),
+		lksdk.WithDataPublishReliable(reliable))
 }
 
 // connectToRoomFunc connects to a LiveKit room. It is a field on Transcriber so
@@ -45,7 +58,7 @@ func connectToLiveKitRoom(url, token string, cb *lksdk.RoomCallback) (roomConn, 
 		// Don't return a typed nil *lksdk.Room inside the interface.
 		return nil, err
 	}
-	return room, nil
+	return &liveKitRoom{Room: room}, nil
 }
 
 type APIClient interface {
@@ -68,8 +81,11 @@ type Transcriber struct {
 	// assigned, setRoom disconnects the room itself, since done never saw it.
 	closed        bool
 	connectToRoom connectToRoomFunc
-	apiClient     APIClient
-	apiURL        string
+	// publishData publishes a lossy data message on the caption topic to the
+	// room. It is nil until the room is connected, and guarded by roomMu.
+	publishData func(payload []byte) error
+	apiClient   APIClient
+	apiURL      string
 
 	startedCh chan struct{}
 	startOnce sync.Once
@@ -132,14 +148,15 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 
 func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	if t.cfg.LiveCaptionsOn {
-		// TODO(MM-71164 phase 2): deliver captions over LiveKit data messages.
-		slog.Warn("LiveCaptionsOn is set but live captions are not supported without the websocket yet; skipping")
-		t.cfg.LiveCaptionsOn = false
+		// Started first so the transcribers are ready by the time audio arrives.
+		// done stops them through captionsPoolDoneCh, also if Start fails below.
+		t.startTranscriberPool()
 	}
 
 	// 1. Join the call over HTTP. This creates the bot's call session and
-	//    returns a subscribe-only LiveKit token. It is rejected if the job was
-	//    already stopped or started.
+	//    returns a LiveKit token. The token is subscribe-only, plus permission
+	//    to publish data when live captions are on. It is rejected if the job
+	//    was already stopped or started.
 	session, err := t.createLiveKitSession(ctx)
 	if err != nil {
 		return err
@@ -170,6 +187,12 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	}
 	t.setRoom(room)
 	slog.Debug("connected to livekit room")
+
+	if t.cfg.LiveCaptionsOn {
+		t.setDataPublisher(func(payload []byte) error {
+			return room.PublishData(payload, captionDataTopic, false)
+		})
+	}
 
 	// The initial state doesn't go through the metadata callback. The call state
 	// from the join response is the freshest view; the room metadata may not
@@ -211,6 +234,13 @@ func (t *Transcriber) setRoom(room roomConn) {
 	if closed {
 		room.Disconnect()
 	}
+}
+
+// setDataPublisher sets the function used to publish caption data messages.
+func (t *Transcriber) setDataPublisher(publish func(payload []byte) error) {
+	t.roomMu.Lock()
+	t.publishData = publish
+	t.roomMu.Unlock()
 }
 
 // handleDisconnect handles being disconnected from the LiveKit room. The bot
