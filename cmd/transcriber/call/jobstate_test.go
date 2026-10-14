@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -170,6 +171,9 @@ func TestHandleDisconnect(t *testing.T) {
 type fakeRoom struct {
 	metadata    string
 	disconnects atomic.Int32
+
+	mu        sync.Mutex
+	published []publishedData
 }
 
 func (f *fakeRoom) Disconnect() {
@@ -178,6 +182,25 @@ func (f *fakeRoom) Disconnect() {
 
 func (f *fakeRoom) Metadata() string {
 	return f.metadata
+}
+
+type publishedData struct {
+	payload  []byte
+	topic    string
+	reliable bool
+}
+
+func (f *fakeRoom) PublishData(payload []byte, topic string, reliable bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.published = append(f.published, publishedData{payload: payload, topic: topic, reliable: reliable})
+	return nil
+}
+
+func (f *fakeRoom) publishedData() []publishedData {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]publishedData(nil), f.published...)
 }
 
 func TestSetRoom(t *testing.T) {
