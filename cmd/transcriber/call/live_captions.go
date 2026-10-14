@@ -379,14 +379,14 @@ func cutWindowToSize(trackID string, window []float32, segments []segmentSamples
 	return window, prevTranscribedPos
 }
 
-func (t *Transcriber) startTranscriberPool() {
+func (t *Transcriber) startTranscriberPool() { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
 	for i := 0; i < t.cfg.LiveCaptionsNumTranscribers; i++ {
 		t.captionsPoolWg.Add(1)
 		go t.handleTranscriptionRequests(i)
 	}
 }
 
-func (t *Transcriber) handleTranscriptionRequests(num int) {
+func (t *Transcriber) handleTranscriptionRequests(num int) { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
 	slog.Debug(fmt.Sprintf("live captions, handleTranscriptionRequests: starting transcriber #%d", num))
 
 	transcriber, err := t.newLiveCaptionsTranscriber()
@@ -428,7 +428,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 	}
 }
 
-func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) {
+func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIAzure:
 		// Only supporting WhisperCPP live captions for the time being.
