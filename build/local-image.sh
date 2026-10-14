@@ -20,5 +20,7 @@ git clone -q --no-hardlinks "$SRC" "$TMP"
 git -C "$TMP" remote set-url origin "$(git -C "$SRC" config --get remote.origin.url)"
 rsync -a --delete --exclude .git --exclude dist "$SRC"/ "$TMP"/
 
-make -C "$TMP" docker-build DOCKER_TAG="$TAG"
+# CI=false so an inherited CI=true can't switch the Makefile to a multi-arch
+# build that pushes to a registry instead of loading the image locally.
+make -C "$TMP" docker-build CI=false DOCKER_TAG="$TAG"
 docker image ls "$TAG"
