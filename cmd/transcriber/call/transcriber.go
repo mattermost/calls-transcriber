@@ -23,6 +23,12 @@ const (
 	maxTracksContexes = 256
 )
 
+// roomDisconnecter is the part of *lksdk.Room that the transcriber needs to
+// tear down its connection.
+type roomDisconnecter interface {
+	Disconnect()
+}
+
 type APIClient interface {
 	DoAPIRequest(ctx context.Context, method, url, data, etag string) (*http.Response, error)
 	DoAPIRequestBytes(ctx context.Context, method, url string, data []byte, etag string) (*http.Response, error)
@@ -35,9 +41,13 @@ type Transcriber struct {
 	dataPath string
 
 	// room is the LiveKit room the bot subscribes to in order to receive audio.
-	// It is atomic because it is assigned late in Start while other goroutines
-	// (the LiveKit callbacks) may already call done().
-	room      atomic.Pointer[lksdk.Room]
+	// It is assigned late in Start, while the LiveKit callbacks may already call
+	// done() from other goroutines, so room and closed are guarded by roomMu.
+	roomMu sync.Mutex
+	room   roomDisconnecter
+	// closed is set once done has started. If it is set before the room is
+	// assigned, setRoom disconnects the room itself, since done never saw it.
+	closed    bool
 	apiClient APIClient
 	apiURL    string
 
@@ -140,7 +150,7 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	if err != nil {
 		return fmt.Errorf("failed to connect to livekit room: %w", err)
 	}
-	t.room.Store(room)
+	t.setRoom(room)
 	slog.Debug("connected to livekit room")
 
 	// The initial state doesn't go through the metadata callback. The call state
@@ -164,6 +174,21 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	}
 
 	return nil
+}
+
+// setRoom stores the connected room so done can disconnect it. A LiveKit
+// callback can call done before ConnectToRoomWithToken has returned, in which
+// case done found no room to disconnect and we do it here instead; otherwise the
+// room would stay connected and the track reading loops would never return.
+func (t *Transcriber) setRoom(room roomDisconnecter) {
+	t.roomMu.Lock()
+	t.room = room
+	closed := t.closed
+	t.roomMu.Unlock()
+
+	if closed {
+		room.Disconnect()
+	}
 }
 
 // handleDisconnect handles being disconnected from the LiveKit room. The bot
@@ -256,7 +281,11 @@ func (t *Transcriber) done(reason string) {
 		t.stopReason = reason
 		// Disconnecting from the room makes the per-track ReadRTP loops return,
 		// which lets handleClose's wait on liveTracksWg complete.
-		if room := t.room.Load(); room != nil {
+		t.roomMu.Lock()
+		t.closed = true
+		room := t.room
+		t.roomMu.Unlock()
+		if room != nil {
 			room.Disconnect()
 		}
 		close(t.captionsPoolDoneCh)

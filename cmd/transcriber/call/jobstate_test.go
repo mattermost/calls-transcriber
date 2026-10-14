@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -183,4 +184,36 @@ func TestHandleDisconnect(t *testing.T) {
 			require.Equal(t, tc.stopReason, tr.StopReason())
 		})
 	}
+}
+
+type fakeRoom struct {
+	disconnects atomic.Int32
+}
+
+func (f *fakeRoom) Disconnect() {
+	f.disconnects.Add(1)
+}
+
+func TestSetRoom(t *testing.T) {
+	t.Run("done after the room is set disconnects it", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+		room := &fakeRoom{}
+		tr.setRoom(room)
+		require.Zero(t, room.disconnects.Load())
+
+		tr.done("")
+		require.Equal(t, int32(1), room.disconnects.Load())
+	})
+
+	t.Run("done before the room is set disconnects it when it is set", func(t *testing.T) {
+		tr := setupTranscriberForTest(t)
+
+		// A LiveKit callback stopping the transcriber before ConnectToRoomWithToken
+		// has returned.
+		tr.done("")
+
+		room := &fakeRoom{}
+		tr.setRoom(room)
+		require.Equal(t, int32(1), room.disconnects.Load())
+	})
 }
