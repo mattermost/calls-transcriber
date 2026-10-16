@@ -9,6 +9,7 @@
 # working tree copied over it.
 #
 # Usage: build/local-image.sh [docker-tag]   (default: calls-transcriber:master)
+#        make docker-build-local
 set -euo pipefail
 
 TAG="${1:-calls-transcriber:master}"
