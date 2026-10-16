@@ -32,14 +32,12 @@ func parseLivekitIdentity(identity string) (userID, sessionID string, err error)
 // the room metadata and in the call state returned by POST /livekit-token.
 type liveKitJobState struct {
 	StartAt int64 `json:"start_at"`
-	EndAt   int64 `json:"end_at"`
 }
 
-// liveKitJobs holds the job states carried by the room metadata and call state.
-// Only active jobs are present: a job that ended or failed is omitted.
+// liveKitJobs holds the job states, as far as we use them, carried by the room
+// metadata and call state.
 type liveKitJobs struct {
-	Recording     *liveKitJobState `json:"recording,omitempty"`
-	Transcription *liveKitJobState `json:"transcription,omitempty"`
+	Recording *liveKitJobState `json:"recording,omitempty"`
 }
 
 type liveKitSession struct {

@@ -56,14 +56,6 @@ func TestCreateLiveKitSession(t *testing.T) {
 }
 
 func TestHandleRoomMetadata(t *testing.T) {
-	isDone := func(tr *Transcriber) bool {
-		select {
-		case <-tr.doneCh:
-			return true
-		case <-time.After(500 * time.Millisecond):
-			return false
-		}
-	}
 	isStarted := func(tr *Transcriber) bool {
 		select {
 		case <-tr.startedCh:
@@ -98,33 +90,26 @@ func TestHandleRoomMetadata(t *testing.T) {
 		require.Equal(t, time.UnixMilli(1700000000000), *tr.startTime.Load())
 	})
 
-	t.Run("transcription absent before being seen is not a stop", func(t *testing.T) {
+	t.Run("metadata never stops the transcriber", func(t *testing.T) {
 		tr := setupTranscriberForTest(t)
+
+		// The transcription job showing up and then missing again is not a stop
+		// signal: metadata only carries active jobs and can be stale or arrive out
+		// of order, so absence is ambiguous.
+		tr.handleRoomMetadata(`{"transcription":{"start_at":1}}`)
 		tr.handleRoomMetadata(`{"host_id":"h"}`)
-		require.False(t, isStarted(tr))
 		select {
 		case <-tr.doneCh:
 			t.Fatal("transcriber should not be done")
 		case <-time.After(100 * time.Millisecond):
 		}
 	})
-
-	t.Run("transcription disappearing after being seen stops", func(t *testing.T) {
-		tr := setupTranscriberForTest(t)
-		tr.handleRoomMetadata(`{"transcription":{"start_at":1}}`)
-		tr.handleRoomMetadata(`{"host_id":"h"}`)
-		require.True(t, isDone(tr))
-		require.Equal(t, "", tr.StopReason())
-	})
 }
 
-func TestHandleJobs(t *testing.T) {
+func TestSyncStart(t *testing.T) {
 	t.Run("recording already started in the join response call state", func(t *testing.T) {
 		tr := setupTranscriberForTest(t)
-		tr.handleJobs(liveKitJobs{
-			Recording:     &liveKitJobState{StartAt: 1700000000000},
-			Transcription: &liveKitJobState{},
-		})
+		tr.syncStart(liveKitJobs{Recording: &liveKitJobState{StartAt: 1700000000000}})
 		select {
 		case <-tr.startedCh:
 		default:
@@ -135,10 +120,7 @@ func TestHandleJobs(t *testing.T) {
 
 	t.Run("recording not started in the join response call state", func(t *testing.T) {
 		tr := setupTranscriberForTest(t)
-		tr.handleJobs(liveKitJobs{
-			Recording:     &liveKitJobState{},
-			Transcription: &liveKitJobState{},
-		})
+		tr.syncStart(liveKitJobs{Recording: &liveKitJobState{}})
 		select {
 		case <-tr.startedCh:
 			t.Fatal("transcriber should not be started")
@@ -147,14 +129,13 @@ func TestHandleJobs(t *testing.T) {
 		require.Nil(t, tr.startTime.Load())
 	})
 
-	t.Run("transcription seen in call state then absent from metadata stops", func(t *testing.T) {
+	t.Run("no recording", func(t *testing.T) {
 		tr := setupTranscriberForTest(t)
-		tr.handleJobs(liveKitJobs{Transcription: &liveKitJobState{}})
-		tr.handleRoomMetadata(`{"host_id":"h"}`)
+		tr.syncStart(liveKitJobs{})
 		select {
-		case <-tr.doneCh:
-		case <-time.After(500 * time.Millisecond):
-			t.Fatal("expected transcriber to be done")
+		case <-tr.startedCh:
+			t.Fatal("transcriber should not be started")
+		default:
 		}
 	})
 }

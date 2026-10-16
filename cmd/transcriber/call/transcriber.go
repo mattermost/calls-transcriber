@@ -53,9 +53,6 @@ type Transcriber struct {
 
 	startedCh chan struct{}
 	startOnce sync.Once
-	// transcriptionSeen records that the transcription job has been observed in
-	// the room metadata. Its later absence means the job has ended.
-	transcriptionSeen atomic.Bool
 
 	errCh        chan error
 	doneCh       chan struct{}
@@ -156,7 +153,7 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 	// The initial state doesn't go through the metadata callback. The call state
 	// from the join response is the freshest view; the room metadata may not
 	// have been published yet.
-	t.handleJobs(session.CallState)
+	t.syncStart(session.CallState)
 	t.handleRoomMetadata(room.Metadata())
 
 	// 3. We are coupling transcribing with recording: we don't start processing
@@ -205,6 +202,13 @@ func (t *Transcriber) handleDisconnect(reason lksdk.DisconnectionReason) {
 }
 
 // handleRoomMetadata processes a LiveKit room metadata update.
+//
+// The metadata is only used to sync the start time. It is deliberately not used
+// to detect the job ending: it only carries active jobs, so an ended job simply
+// disappears, which cannot be told apart from metadata that has not been
+// published yet or that is stale (the plugin publishes asynchronously and
+// updates can arrive out of order). The job is stopped by the plugin removing
+// the bot from the room, or by the room closing; see handleDisconnect.
 func (t *Transcriber) handleRoomMetadata(metadata string) {
 	if metadata == "" {
 		return
@@ -214,22 +218,11 @@ func (t *Transcriber) handleRoomMetadata(metadata string) {
 		slog.Warn("failed to parse room metadata", slog.String("err", err.Error()))
 		return
 	}
-	t.handleJobs(jobs)
+	t.syncStart(jobs)
 }
 
-func (t *Transcriber) handleJobs(jobs liveKitJobs) {
-	// Room metadata only carries active jobs, so an ended transcription job
-	// disappears. The first publish can lag behind job creation, so absence only
-	// counts as a stop signal once the job has been seen. This is a backstop;
-	// the primary stop signal is the bot being removed from the room.
-	if jobs.Transcription != nil {
-		t.transcriptionSeen.Store(true)
-	} else if t.transcriptionSeen.Load() {
-		slog.Info("transcription job no longer in room metadata, exiting")
-		go t.done("")
-		return
-	}
-
+// syncStart starts processing audio once the recording has a start time.
+func (t *Transcriber) syncStart(jobs liveKitJobs) {
 	// Note: start_at is the absolute timestamp of when the recording started
 	// to process but could come from a different instance and potentially
 	// suffer from clock skew. Using time.Now() may be more precise but it
