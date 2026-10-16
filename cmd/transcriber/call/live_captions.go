@@ -7,7 +7,6 @@ import (
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/config"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/opus"
 	"github.com/mattermost/calls-transcriber/cmd/transcriber/transcribe"
-	"github.com/mattermost/mattermost-plugin-calls/server/public"
 	"github.com/streamer45/silero-vad-go/speech"
 	"log/slog"
 	"path/filepath"
@@ -153,14 +152,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			window = window[:0]
 			prevWindowLen = 0
 			prevTranscribedPos = 0
-			if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
-				SessionID:  ctx.sessionID,
-				MetricName: public.MetricLiveCaptionsWindowDropped,
-			}, false); err != nil {
-				slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricLiveCaptionsWindowDropped",
-					slog.String("err", err.Error()),
-					slog.String("trackID", ctx.trackID))
-			}
+			// TODO: report a window-dropped metric once metrics have a non-websocket path.
+			slog.Warn("processLiveCaptionsForTrack: window dropped",
+				slog.String("trackID", ctx.trackID))
 			continue
 		}
 
@@ -211,14 +205,9 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		case t.captionsPoolQueueCh <- pkg:
 			break
 		default:
-			if err := t.client.SendWS(wsEvMetric, public.MetricMsg{
-				SessionID:  ctx.sessionID,
-				MetricName: public.MetricLiveCaptionsTranscriberBufFull,
-			}, false); err != nil {
-				slog.Error("processLiveCaptionsForTrack: error sending wsEvMetric MetricTranscriberBufFull",
-					slog.String("err", err.Error()),
-					slog.String("trackID", ctx.trackID))
-			}
+			// TODO: report a buffer-full metric once metrics have a non-websocket path.
+			slog.Warn("processLiveCaptionsForTrack: transcriber queue full",
+				slog.String("trackID", ctx.trackID))
 			close(transcribedCh)
 		}
 
@@ -241,15 +230,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 					break
 				}
-				if err := t.client.SendWS(wsEvCaption, public.CaptionMsg{
-					SessionID:     ctx.sessionID,
-					Text:          text,
-					NewAudioLenMs: float64(newAudioLenMs),
-				}, false); err != nil {
-					slog.Error("processLiveCaptionsForTrack: error sending ws captions",
-						slog.String("err", err.Error()),
-						slog.String("trackID", ctx.trackID))
-				}
+				// TODO(MM-71164 phase 2): publish the caption over LiveKit data messages.
+				slog.Debug("processLiveCaptionsForTrack: caption dropped, LiveKit delivery not implemented",
+					slog.String("trackID", ctx.trackID),
+					slog.Float64("newAudioLenMs", float64(newAudioLenMs)))
 			}
 
 			// We've processed text, so we're finished.
@@ -395,14 +379,14 @@ func cutWindowToSize(trackID string, window []float32, segments []segmentSamples
 	return window, prevTranscribedPos
 }
 
-func (t *Transcriber) startTranscriberPool() {
+func (t *Transcriber) startTranscriberPool() { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
 	for i := 0; i < t.cfg.LiveCaptionsNumTranscribers; i++ {
 		t.captionsPoolWg.Add(1)
 		go t.handleTranscriptionRequests(i)
 	}
 }
 
-func (t *Transcriber) handleTranscriptionRequests(num int) {
+func (t *Transcriber) handleTranscriptionRequests(num int) { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
 	slog.Debug(fmt.Sprintf("live captions, handleTranscriptionRequests: starting transcriber #%d", num))
 
 	transcriber, err := t.newLiveCaptionsTranscriber()
@@ -444,7 +428,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) {
 	}
 }
 
-func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) {
+func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIAzure:
 		// Only supporting WhisperCPP live captions for the time being.

@@ -61,6 +61,8 @@ DOCKER_OPTS             += --rm -u $$(id -u):$$(id -g) --platform "linux/${ARCH}
 DOCKER_REGISTRY         ?= docker.io
 DOCKER_REGISTRY_REPO    ?= mattermost/${APP_NAME}-daily
 DOCKER_TAG              ?= ${APP_NAME}:${APP_VERSION}
+# Image tag a local calls-offloader running with DEV_MODE=true looks for.
+DOCKER_LOCAL_TAG        ?= calls-transcriber:master
 # Registry credentials
 DOCKER_USER             ?= user
 DOCKER_PASSWORD         ?= password
@@ -224,6 +226,12 @@ ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
 endif
 endif
 endif
+
+.PHONY: docker-build-local
+docker-build-local: ## to build the docker image for a local dev calls-offloader (tags calls-transcriber:master, works from a git worktree)
+	@$(INFO) Performing local Docker build ${DOCKER_LOCAL_TAG}
+	$(AT)./build/local-image.sh ${DOCKER_LOCAL_TAG} || ${FAIL}
+	@$(OK) Performing local Docker build ${DOCKER_LOCAL_TAG}
 
 .PHONY: docker-sign
 docker-sign: ## to sign the docker image
