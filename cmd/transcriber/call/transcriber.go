@@ -23,10 +23,23 @@ const (
 	maxTracksContexes = 256
 )
 
-// roomDisconnecter is the part of *lksdk.Room that the transcriber needs to
-// tear down its connection.
-type roomDisconnecter interface {
+// roomConn is the part of *lksdk.Room that the transcriber uses once connected.
+type roomConn interface {
 	Disconnect()
+	Metadata() string
+}
+
+// connectToRoomFunc connects to a LiveKit room. It is a field on Transcriber so
+// that tests can replace it.
+type connectToRoomFunc func(url, token string, cb *lksdk.RoomCallback) (roomConn, error)
+
+func connectToLiveKitRoom(url, token string, cb *lksdk.RoomCallback) (roomConn, error) {
+	room, err := lksdk.ConnectToRoomWithToken(url, token, cb, lksdk.WithAutoSubscribe(true))
+	if err != nil {
+		// Don't return a typed nil *lksdk.Room inside the interface.
+		return nil, err
+	}
+	return room, nil
 }
 
 type APIClient interface {
@@ -44,12 +57,13 @@ type Transcriber struct {
 	// It is assigned late in Start, while the LiveKit callbacks may already call
 	// done() from other goroutines, so room and closed are guarded by roomMu.
 	roomMu sync.Mutex
-	room   roomDisconnecter
+	room   roomConn
 	// closed is set once done has started. If it is set before the room is
 	// assigned, setRoom disconnects the room itself, since done never saw it.
-	closed    bool
-	apiClient APIClient
-	apiURL    string
+	closed        bool
+	connectToRoom connectToRoomFunc
+	apiClient     APIClient
+	apiURL        string
 
 	startedCh chan struct{}
 	startOnce sync.Once
@@ -80,10 +94,11 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 	apiClient.SetToken(cfg.AuthToken)
 
 	t = &Transcriber{
-		cfg:       cfg,
-		apiClient: apiClient,
-		apiURL:    apiClient.URL,
-		dataPath:  dataPath,
+		cfg:           cfg,
+		apiClient:     apiClient,
+		apiURL:        apiClient.URL,
+		dataPath:      dataPath,
+		connectToRoom: connectToLiveKitRoom,
 	}
 
 	defer func() {
@@ -137,13 +152,13 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 
 	// 2. Connect to the LiveKit room. Call signalling (job state, stop) arrives
 	//    through room metadata and participant removal.
-	room, err := lksdk.ConnectToRoomWithToken(session.URL, session.Token, &lksdk.RoomCallback{
+	room, err := t.connectToRoom(session.URL, session.Token, &lksdk.RoomCallback{
 		ParticipantCallback: lksdk.ParticipantCallback{
 			OnTrackSubscribed: t.handleTrack,
 		},
 		OnRoomMetadataChanged:    t.handleRoomMetadata,
 		OnDisconnectedWithReason: t.handleDisconnect,
-	}, lksdk.WithAutoSubscribe(true))
+	})
 	if err != nil {
 		return fmt.Errorf("failed to connect to livekit room: %w", err)
 	}
@@ -177,7 +192,7 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 // callback can call done before ConnectToRoomWithToken has returned, in which
 // case done found no room to disconnect and we do it here instead; otherwise the
 // room would stay connected and the track reading loops would never return.
-func (t *Transcriber) setRoom(room roomDisconnecter) {
+func (t *Transcriber) setRoom(room roomConn) {
 	t.roomMu.Lock()
 	t.room = room
 	closed := t.closed

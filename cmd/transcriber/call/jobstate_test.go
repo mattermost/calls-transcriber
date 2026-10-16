@@ -168,11 +168,16 @@ func TestHandleDisconnect(t *testing.T) {
 }
 
 type fakeRoom struct {
+	metadata    string
 	disconnects atomic.Int32
 }
 
 func (f *fakeRoom) Disconnect() {
 	f.disconnects.Add(1)
+}
+
+func (f *fakeRoom) Metadata() string {
+	return f.metadata
 }
 
 func TestSetRoom(t *testing.T) {
