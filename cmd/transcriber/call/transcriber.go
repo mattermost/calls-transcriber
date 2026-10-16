@@ -3,6 +3,7 @@ package call
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,6 +23,11 @@ const (
 	pluginID          = "com.mattermost.calls"
 	maxTracksContexes = 256
 )
+
+// ErrStoppedBeforeStart is returned by Start when the transcriber was stopped
+// before the recording started, e.g. the plugin removed the bot because the job
+// was stopped, or the room closed because the call ended. It is not a failure.
+var ErrStoppedBeforeStart = errors.New("transcriber stopped before starting")
 
 // roomConn is the part of *lksdk.Room that the transcriber uses once connected.
 type roomConn interface {
@@ -180,7 +186,11 @@ func (t *Transcriber) Start(ctx context.Context) (retErr error) {
 			return fmt.Errorf("failed to report job started status: %w", err)
 		}
 	case <-t.doneCh:
-		return fmt.Errorf("transcriber stopped before starting")
+		if reason := t.StopReason(); reason != "" {
+			// An unexpected stop, e.g. an unexpected disconnect from the room.
+			return fmt.Errorf("transcriber stopped before starting: %s", reason)
+		}
+		return ErrStoppedBeforeStart
 	case <-ctx.Done():
 		return ctx.Err()
 	}

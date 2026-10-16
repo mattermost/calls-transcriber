@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -85,7 +86,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 	defer cancel()
 	if err := transcriber.Start(ctx); err != nil {
-		if err := transcriber.ReportJobFailure(err.Error()); err != nil {
+		stoppedBeforeStart := errors.Is(err, call.ErrStoppedBeforeStart)
+		if stoppedBeforeStart {
+			// The job was stopped before the recording started, e.g. the plugin
+			// removed the bot. This is not a failure, so don't report one.
+			slog.Info("transcriber was stopped before it started")
+		} else if err := transcriber.ReportJobFailure(err.Error()); err != nil {
 			slog.Error("failed to report job failure", slog.String("err", err.Error()))
 		}
 
@@ -96,7 +102,9 @@ func main() {
 			slog.Error("failed to stop transcriber", slog.String("err", err.Error()))
 		}
 
-		slog.Error("failed to start transcriber", slog.String("err", err.Error()))
+		if !stoppedBeforeStart {
+			slog.Error("failed to start transcriber", slog.String("err", err.Error()))
+		}
 
 		// Although an error case, if we fail to start we are not losing any
 		// transcript data so the associated resources (e.g. container, volume) can be safely deleted.

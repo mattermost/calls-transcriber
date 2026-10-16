@@ -359,6 +359,7 @@ func TestStart(t *testing.T) {
 
 		err := tr.Start(context.Background())
 		require.ErrorContains(t, err, "failed to report job started status")
+		require.NotErrorIs(t, err, ErrStoppedBeforeStart)
 		require.Equal(t, 1+postJobStatusMaxRetries, ps.statusCallCount())
 		require.Equal(t, int32(1), room.disconnects.Load())
 		require.True(t, isDone(tr))
@@ -376,7 +377,9 @@ func TestStart(t *testing.T) {
 		require.Eventually(t, func() bool { return fc.callback() != nil }, 2*time.Second, 10*time.Millisecond)
 		cancel()
 
-		require.ErrorIs(t, requireStartResult(t, ch), context.Canceled)
+		err := requireStartResult(t, ch)
+		require.ErrorIs(t, err, context.Canceled)
+		require.NotErrorIs(t, err, ErrStoppedBeforeStart)
 		require.Equal(t, int32(1), room.disconnects.Load())
 		require.True(t, isDone(tr))
 	})
@@ -391,7 +394,7 @@ func TestStart(t *testing.T) {
 		require.Eventually(t, func() bool { return fc.callback() != nil }, 2*time.Second, 10*time.Millisecond)
 		fc.callback().OnDisconnectedWithReason(lksdk.ParticipantRemoved)
 
-		require.EqualError(t, requireStartResult(t, ch), "transcriber stopped before starting")
+		require.ErrorIs(t, requireStartResult(t, ch), ErrStoppedBeforeStart)
 		require.Equal(t, int32(1), room.disconnects.Load())
 		require.Equal(t, "", tr.StopReason())
 		require.Zero(t, ps.statusCallCount())
@@ -407,7 +410,9 @@ func TestStart(t *testing.T) {
 		require.Eventually(t, func() bool { return fc.callback() != nil }, 2*time.Second, 10*time.Millisecond)
 		fc.callback().OnDisconnectedWithReason(lksdk.Failed)
 
-		require.EqualError(t, requireStartResult(t, ch), "transcriber stopped before starting")
+		err := requireStartResult(t, ch)
+		require.EqualError(t, err, "transcriber stopped before starting: livekit room disconnected unexpectedly: connection to room failed")
+		require.NotErrorIs(t, err, ErrStoppedBeforeStart, "an unexpected stop is a failure")
 		require.Equal(t, int32(1), room.disconnects.Load())
 		require.Equal(t, "livekit room disconnected unexpectedly: connection to room failed", tr.StopReason())
 	})
