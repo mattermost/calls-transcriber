@@ -51,6 +51,56 @@ type trackContext struct {
 	user      *model.User
 }
 
+// rtpStats aggregates the RTP packets of a track over one second for debug
+// logging. Tiny payloads at ~400ms spacing indicate Opus DTX.
+type rtpStats struct {
+	windowStart     time.Time
+	count           int
+	bytes           int
+	minLen, maxLen  int
+	maxTSDelta      time.Duration
+	maxArrivalDelta time.Duration
+
+	prevTS      uint32
+	prevArrival time.Time
+}
+
+func (s *rtpStats) add(payloadLen int, ts uint32, now time.Time) {
+	if s.count == 0 {
+		s.windowStart = now
+		s.minLen = payloadLen
+	}
+	s.count++
+	s.bytes += payloadLen
+	s.minLen = min(s.minLen, payloadLen)
+	s.maxLen = max(s.maxLen, payloadLen)
+	if !s.prevArrival.IsZero() {
+		// int32 conversion handles RTP timestamp wrap around.
+		tsDelta := time.Duration(int32(ts-s.prevTS)/trackInAudioSamplesPerMs) * time.Millisecond
+		s.maxTSDelta = max(s.maxTSDelta, tsDelta)
+		s.maxArrivalDelta = max(s.maxArrivalDelta, now.Sub(s.prevArrival))
+	}
+	s.prevTS = ts
+	s.prevArrival = now
+}
+
+// flush logs and resets the window if it is older than a second (or force is set).
+func (s *rtpStats) flush(ctx trackContext, now time.Time, force bool) {
+	if s.count == 0 || (!force && now.Sub(s.windowStart) < time.Second) {
+		return
+	}
+	slog.Debug("rtp stats",
+		slog.Int("packets", s.count),
+		slog.Int("bytes", s.bytes),
+		slog.Int("minPayloadLen", s.minLen),
+		slog.Int("maxPayloadLen", s.maxLen),
+		slog.Duration("maxTSDelta", s.maxTSDelta),
+		slog.Duration("maxArrivalDelta", s.maxArrivalDelta),
+		slog.String("trackID", ctx.trackID),
+		slog.String("username", ctx.user.Username))
+	*s = rtpStats{prevTS: s.prevTS, prevArrival: s.prevArrival}
+}
+
 // handleTrack gets called by LiveKit whenever a remote track is subscribed
 // (e.g. someone unmuted for the first time). As soon as this happens we start
 // processing the track. The session/user is derived from the participant
@@ -105,6 +155,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 
 	var prevArrivalTime time.Time
 	var prevRTPTimestamp uint32
+	var stats rtpStats
 
 	slog.Debug("processing voice track",
 		slog.String("username", user.Username),
@@ -113,6 +164,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 	slog.Debug("start reading loop for track", slog.String("trackID", ctx.trackID))
 	defer func() {
 		slog.Debug("exiting reading loop for track", slog.String("trackID", ctx.trackID))
+		stats.flush(ctx, time.Now(), true)
 
 		// Only send the track context if we processed at least one audio packet.
 		if !prevArrivalTime.IsZero() {
@@ -161,6 +213,11 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 		if t.startTime.Load() == nil {
 			continue
 		}
+
+		// Debug only: measured before any filtering so empty packets show up too.
+		now := time.Now()
+		stats.add(len(pkt.Payload), pkt.Timestamp, now)
+		stats.flush(ctx, now, false)
 
 		// Ignore empty packets. This is important to avoid synchronization issues
 		// since empty packets are not written in the output OGG file (MM-56186) so
@@ -336,10 +393,31 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	samples := make([]trackTimedSamples, 1)
 
 	var prevGP uint64
+
+	// Debug only: per chunk stats to measure the silence dropped by sub-threshold gaps.
+	var firstGP, lastGP uint64
+	var chunkStarted bool
+	var smallGaps int
+	var smallGapsDur time.Duration
+	logChunk := func() {
+		idx := len(samples) - 1
+		slog.Debug("decoded chunk",
+			slog.Int("chunk", idx),
+			slog.Int64("startTS", samples[idx].startTS),
+			slog.Int("pcmMs", len(samples[idx].pcm)/trackOutAudioSamplesPerMs),
+			slog.Int("granuleSpanMs", int((lastGP-firstGP)/trackInAudioSamplesPerMs)),
+			slog.Int("smallGaps", smallGaps),
+			slog.Duration("smallGapsTotal", smallGapsDur),
+			slog.String("trackID", ctx.trackID),
+			slog.String("username", ctx.user.Username))
+		chunkStarted, smallGaps, smallGapsDur = false, 0, 0
+	}
+
 	for {
 		data, hdr, err := oggReader.ParseNextPage()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				logChunk()
 				break
 			}
 			slog.Error("failed to parse ogg page",
@@ -359,12 +437,20 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 			// If there's enough of a gap in the audio (audioGapThreshold) we split and
 			// update the start time accordingly.
 			if gap > audioGapThreshold {
+				logChunk()
 				samples = append(samples, trackTimedSamples{
 					startTS: int64(hdr.GranulePosition) / trackInAudioSamplesPerMs,
 				})
+			} else {
+				smallGaps++
+				smallGapsDur += gap
 			}
 		}
 		prevGP = hdr.GranulePosition
+		if !chunkStarted {
+			firstGP, chunkStarted = hdr.GranulePosition, true
+		}
+		lastGP = hdr.GranulePosition
 
 		n, err := opusDec.Decode(data, pcmBuf)
 		if err != nil {
@@ -474,6 +560,14 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 				speechPCM = ts.pcm[startSampleOff:]
 			}
 
+			slog.Debug("speech sample",
+				slog.Int("sample", len(speechSamples)),
+				slog.Int64("chunkStartTS", ts.startTS),
+				slog.Float64("speechStartAt", seg.SpeechStartAt),
+				slog.Int("pcmMs", len(speechPCM)/trackOutAudioSamplesPerMs),
+				slog.String("trackID", ctx.trackID),
+				slog.String("username", ctx.user.Username))
+
 			speechSamples = append(speechSamples, trackTimedSamples{
 				pcm: speechPCM,
 				// Multiplying as our timestamps are in milliseconds.
@@ -485,7 +579,14 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 	slog.Debug("speech detection done", slog.Any("speechSamples", len(speechSamples)))
 
 	var totalDur time.Duration
-	for _, ts := range speechSamples {
+	for i, ts := range speechSamples {
+		slog.Debug("transcribing speech sample",
+			slog.Int("sample", i),
+			slog.Int64("startTS", ts.startTS),
+			slog.Int("pcmMs", len(ts.pcm)/trackOutAudioSamplesPerMs),
+			slog.String("trackID", ctx.trackID),
+			slog.String("username", ctx.user.Username))
+
 		segments, lang, err := transcriber.Transcribe(ts.pcm)
 		if err != nil {
 			slog.Error("failed to transcribe audio samples",
@@ -502,8 +603,16 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 		totalDur += samplesDur
 
 		for _, s := range segments {
+			rawStartTS, rawEndTS := s.StartTS, s.EndTS
 			s.StartTS += ts.startTS + ctx.startTS
 			s.EndTS += ts.startTS + ctx.startTS
+			slog.Debug("whisper segment",
+				slog.Int("sample", i),
+				slog.Int64("rawStartTS", rawStartTS), slog.Int64("rawEndTS", rawEndTS),
+				slog.Int64("startTS", s.StartTS), slog.Int64("endTS", s.EndTS),
+				slog.String("text", s.Text),
+				slog.String("trackID", ctx.trackID),
+				slog.String("username", ctx.user.Username))
 			trackTr.Segments = append(trackTr.Segments, s)
 		}
 	}
