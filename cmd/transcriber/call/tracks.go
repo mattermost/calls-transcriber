@@ -302,6 +302,36 @@ type trackTimedSamples struct {
 	startTS int64
 }
 
+// gapFiller keeps the decoded PCM of a chunk aligned with real time. Page granule
+// positions are packet start offsets that advance in real time, while the sender
+// stops sending packets during silence (Opus DTX), so the decoded PCM alone would
+// be shorter than the time it covers.
+type gapFiller struct {
+	startGP uint64
+	started bool
+}
+
+// padSamples returns how many zero samples (at trackOutAudioRate) must be inserted
+// before the page at gp so that the pcmLen samples decoded so far end where it
+// starts. The first page of a chunk is never padded: its offset is the chunk's startTS.
+func (g *gapFiller) padSamples(gp uint64, pcmLen int) int {
+	if !g.started {
+		g.startGP, g.started = gp, true
+		return 0
+	}
+	if gp < g.startGP {
+		return 0
+	}
+	// Computed from the offset since the start of the chunk rather than per gap, so
+	// that integer truncation doesn't accumulate across many small gaps.
+	want := int((gp - g.startGP) * trackOutAudioSamplesPerMs / trackInAudioSamplesPerMs)
+	return max(0, want-pcmLen)
+}
+
+func (g *gapFiller) reset() {
+	*g = gapFiller{}
+}
+
 // decodeAudio reads a track OGG file and decodes its audio into raw PCM samples
 // for later processing.
 func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
@@ -340,8 +370,9 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 	// Debug only: per chunk stats to measure the silence dropped by sub-threshold gaps.
 	var firstGP, lastGP uint64
 	var chunkStarted bool
-	var smallGaps int
+	var smallGaps, paddedSamples int
 	var smallGapsDur time.Duration
+	var filler gapFiller
 	logChunk := func() {
 		idx := len(samples) - 1
 		slog.Debug("decoded chunk",
@@ -351,9 +382,10 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 			slog.Int("granuleSpanMs", int((lastGP-firstGP)/trackInAudioSamplesPerMs)),
 			slog.Int("smallGaps", smallGaps),
 			slog.Duration("smallGapsTotal", smallGapsDur),
+			slog.Int("paddedMs", paddedSamples/trackOutAudioSamplesPerMs),
 			slog.String("trackID", ctx.trackID),
 			slog.String("username", ctx.user.Username))
-		chunkStarted, smallGaps, smallGapsDur = false, 0, 0
+		chunkStarted, smallGaps, paddedSamples, smallGapsDur = false, 0, 0, 0
 	}
 
 	for {
@@ -384,6 +416,7 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 				samples = append(samples, trackTimedSamples{
 					startTS: int64(hdr.GranulePosition) / trackInAudioSamplesPerMs,
 				})
+				filler.reset()
 			} else {
 				smallGaps++
 				smallGapsDur += gap
@@ -403,7 +436,13 @@ func (ctx trackContext) decodeAudio() ([]trackTimedSamples, error) {
 				slog.String("trackID", ctx.trackID))
 		}
 
-		samples[len(samples)-1].pcm = append(samples[len(samples)-1].pcm, pcmBuf[:n]...)
+		cur := &samples[len(samples)-1]
+		// Restore the silence the sender didn't transmit (see gapFiller).
+		if pad := filler.padSamples(hdr.GranulePosition, len(cur.pcm)); pad > 0 {
+			cur.pcm = append(cur.pcm, make([]float32, pad)...)
+			paddedSamples += pad
+		}
+		cur.pcm = append(cur.pcm, pcmBuf[:n]...)
 	}
 
 	return samples, nil
