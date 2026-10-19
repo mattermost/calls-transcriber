@@ -246,10 +246,18 @@ func (t *Transcriber) setDataPublisher(publish func(payload []byte) error) {
 // handleDisconnect handles being disconnected from the LiveKit room. The bot
 // being removed (the plugin evicts it to stop the job), the room closing and
 // leaving are clean exits; anything else fails the job.
+//
+// OtherReason is also a clean exit: the SDK maps every reason it doesn't know to
+// it, including ROOM_DELETED, which is what a host ending the call produces.
+// Genuine connection failures are reported as Failed.
 func (t *Transcriber) handleDisconnect(reason lksdk.DisconnectionReason) {
 	slog.Debug("disconnected from livekit room", slog.String("reason", string(reason)))
 	switch reason {
 	case lksdk.RoomClosed, lksdk.LeaveRequested, lksdk.ParticipantRemoved:
+		go t.done("")
+	case lksdk.OtherReason:
+		slog.Warn("disconnected from livekit room for an unspecified reason, assuming the call ended",
+			slog.String("reason", string(reason)))
 		go t.done("")
 	default:
 		go t.done("livekit room disconnected unexpectedly: " + string(reason))

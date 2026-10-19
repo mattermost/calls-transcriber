@@ -149,9 +149,10 @@ func TestHandleDisconnect(t *testing.T) {
 		{lksdk.ParticipantRemoved, ""},
 		{lksdk.RoomClosed, ""},
 		{lksdk.LeaveRequested, ""},
+		// The SDK reports ROOM_DELETED (host ended the call) as OtherReason.
+		{lksdk.OtherReason, ""},
 		{lksdk.Failed, "livekit room disconnected unexpectedly: connection to room failed"},
 		{lksdk.DuplicateIdentity, "livekit room disconnected unexpectedly: duplicate identity"},
-		{lksdk.OtherReason, "livekit room disconnected unexpectedly: other reasons"},
 	}
 
 	for _, tc := range tcs {
