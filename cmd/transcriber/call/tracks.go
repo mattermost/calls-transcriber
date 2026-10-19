@@ -51,56 +51,6 @@ type trackContext struct {
 	user      *model.User
 }
 
-// rtpStats aggregates the RTP packets of a track over one second for debug
-// logging. Tiny payloads at ~400ms spacing indicate Opus DTX.
-type rtpStats struct {
-	windowStart     time.Time
-	count           int
-	bytes           int
-	minLen, maxLen  int
-	maxTSDelta      time.Duration
-	maxArrivalDelta time.Duration
-
-	prevTS      uint32
-	prevArrival time.Time
-}
-
-func (s *rtpStats) add(payloadLen int, ts uint32, now time.Time) {
-	if s.count == 0 {
-		s.windowStart = now
-		s.minLen = payloadLen
-	}
-	s.count++
-	s.bytes += payloadLen
-	s.minLen = min(s.minLen, payloadLen)
-	s.maxLen = max(s.maxLen, payloadLen)
-	if !s.prevArrival.IsZero() {
-		// int32 conversion handles RTP timestamp wrap around.
-		tsDelta := time.Duration(int32(ts-s.prevTS)/trackInAudioSamplesPerMs) * time.Millisecond
-		s.maxTSDelta = max(s.maxTSDelta, tsDelta)
-		s.maxArrivalDelta = max(s.maxArrivalDelta, now.Sub(s.prevArrival))
-	}
-	s.prevTS = ts
-	s.prevArrival = now
-}
-
-// flush logs and resets the window if it is older than a second (or force is set).
-func (s *rtpStats) flush(ctx trackContext, now time.Time, force bool) {
-	if s.count == 0 || (!force && now.Sub(s.windowStart) < time.Second) {
-		return
-	}
-	slog.Debug("rtp stats",
-		slog.Int("packets", s.count),
-		slog.Int("bytes", s.bytes),
-		slog.Int("minPayloadLen", s.minLen),
-		slog.Int("maxPayloadLen", s.maxLen),
-		slog.Duration("maxTSDelta", s.maxTSDelta),
-		slog.Duration("maxArrivalDelta", s.maxArrivalDelta),
-		slog.String("trackID", ctx.trackID),
-		slog.String("username", ctx.user.Username))
-	*s = rtpStats{prevTS: s.prevTS, prevArrival: s.prevArrival}
-}
-
 // handleTrack gets called by LiveKit whenever a remote track is subscribed
 // (e.g. someone unmuted for the first time). As soon as this happens we start
 // processing the track. The session/user is derived from the participant
@@ -155,7 +105,6 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 
 	var prevArrivalTime time.Time
 	var prevRTPTimestamp uint32
-	var stats rtpStats
 
 	slog.Debug("processing voice track",
 		slog.String("username", user.Username),
@@ -164,7 +113,6 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 	slog.Debug("start reading loop for track", slog.String("trackID", ctx.trackID))
 	defer func() {
 		slog.Debug("exiting reading loop for track", slog.String("trackID", ctx.trackID))
-		stats.flush(ctx, time.Now(), true)
 
 		// Only send the track context if we processed at least one audio packet.
 		if !prevArrivalTime.IsZero() {
@@ -213,11 +161,6 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 		if t.startTime.Load() == nil {
 			continue
 		}
-
-		// Debug only: measured before any filtering so empty packets show up too.
-		now := time.Now()
-		stats.add(len(pkt.Payload), pkt.Timestamp, now)
-		stats.flush(ctx, now, false)
 
 		// Ignore empty packets. This is important to avoid synchronization issues
 		// since empty packets are not written in the output OGG file (MM-56186) so
@@ -610,7 +553,6 @@ func (t *Transcriber) transcribeTrack(ctx trackContext) (transcribe.TrackTranscr
 				slog.Int("sample", i),
 				slog.Int64("rawStartTS", rawStartTS), slog.Int64("rawEndTS", rawEndTS),
 				slog.Int64("startTS", s.StartTS), slog.Int64("endTS", s.EndTS),
-				slog.String("text", s.Text),
 				slog.String("trackID", ctx.trackID),
 				slog.String("username", ctx.user.Username))
 			trackTr.Segments = append(trackTr.Segments, s)
