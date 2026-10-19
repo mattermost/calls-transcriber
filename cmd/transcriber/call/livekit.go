@@ -66,6 +66,13 @@ func (t *Transcriber) createLiveKitSession(ctx context.Context) (*liveKitSession
 
 	resp, err := t.apiClient.DoAPIRequestBytes(reqCtx, http.MethodPost, reqURL, body, "")
 	if err != nil {
+		// The client returns the response alongside the error. A 404 means the
+		// plugin has no /livekit-token route, i.e. it's a Calls v1 deployment
+		// (or the plugin is disabled), and the plain text body can't be decoded
+		// into an AppError.
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("failed to create livekit session: %s returned 404; the Calls plugin may be disabled or is not a LiveKit (v2) deployment", reqURL)
+		}
 		return nil, fmt.Errorf("failed to create livekit session: %w", err)
 	}
 	defer resp.Body.Close()

@@ -131,6 +131,12 @@ func TestCreateLiveKitSessionAPI(t *testing.T) {
 			errMsg: "failed to create livekit session: job not in progress or already started",
 		},
 		{
+			name:   "route not found (Calls v1 plugin)",
+			status: http.StatusNotFound,
+			body:   "404 page not found\n",
+			errMsg: "returned 404; the Calls plugin may be disabled or is not a LiveKit (v2) deployment",
+		},
+		{
 			name:   "unauthorized",
 			status: http.StatusUnauthorized,
 			body:   `{"message": "unauthorized"}`,
