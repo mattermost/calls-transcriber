@@ -135,9 +135,9 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 
 	// Live captioning:
 	// pktPayloadCh is used to send the rtp audio data to the processLiveCaptionsForTrack goroutine
-	var pktPayloadCh chan []byte
+	var pktPayloadCh chan livePacket
 	if t.cfg.LiveCaptionsOn {
-		pktPayloadCh = make(chan []byte, pktPayloadChBuffer)
+		pktPayloadCh = make(chan livePacket, pktPayloadChBuffer)
 		defer func() {
 			close(pktPayloadCh)
 		}()
@@ -236,7 +236,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 
 		if t.cfg.LiveCaptionsOn {
 			select {
-			case pktPayloadCh <- pkt.Payload:
+			case pktPayloadCh <- livePacket{payload: pkt.Payload, ts: pkt.Timestamp}:
 			default:
 				// TODO: report a pkt-payload-chan-full metric once metrics have a non-websocket path.
 				slog.Warn("processLiveTrack: live captions packet buffer full",

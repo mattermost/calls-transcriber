@@ -1,0 +1,120 @@
+package call
+
+import (
+	"math"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLiveGapFiller(t *testing.T) {
+	// feed returns the padding and reset for a packet at ts, then "decodes" 20ms of it.
+	feed := func(f *liveGapFiller, ts uint32) (int, bool) {
+		pad, reset := f.next(ts)
+		if reset {
+			f.fed = 0 // the caller drops the window
+		}
+		f.decoded(testFrameSamples)
+		return pad, reset
+	}
+	const ms = trackInAudioSamplesPerMs
+
+	t.Run("first packet is not padded", func(t *testing.T) {
+		var f liveGapFiller
+		pad, reset := feed(&f, 123456)
+		require.Zero(t, pad)
+		require.False(t, reset)
+	})
+
+	t.Run("contiguous packets", func(t *testing.T) {
+		var f liveGapFiller
+		ts := uint32(1000)
+		for i := 0; i < 100; i++ {
+			pad, reset := feed(&f, ts)
+			require.Zero(t, pad)
+			require.False(t, reset)
+			ts += testFrameGP
+		}
+		require.Equal(t, 100*testFrameSamples, f.fed)
+	})
+
+	tcs := []struct {
+		name  string
+		delta uint32
+		want  int
+		reset bool
+	}{
+		{"20ms", 20 * ms, 0, false},
+		{"DTX 400ms", 400 * ms, 380 * trackOutAudioSamplesPerMs, false},
+		{"just below the reset threshold", liveGapThreshold - ms, (3000 - 1 - 20) * trackOutAudioSamplesPerMs, false},
+		{"at the reset threshold", liveGapThreshold, 0, true},
+		{"above the reset threshold", 10 * trackInAudioRate, 0, true},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			var f liveGapFiller
+			feed(&f, 5000)
+			pad, reset := feed(&f, 5000+tc.delta)
+			require.Equal(t, tc.want, pad)
+			require.Equal(t, tc.reset, reset)
+			if !tc.reset {
+				// The window ends exactly where the new packet ends.
+				require.Equal(t, int(tc.delta/3)+testFrameSamples, f.fed)
+			} else {
+				// The new window starts with the new packet only.
+				require.Equal(t, testFrameSamples, f.fed)
+				pad, reset = feed(&f, 5000+tc.delta+400*ms)
+				require.Equal(t, 380*trackOutAudioSamplesPerMs, pad)
+				require.False(t, reset)
+			}
+		})
+	}
+
+	t.Run("wraparound", func(t *testing.T) {
+		var f liveGapFiller
+		start := uint32(math.MaxUint32 - 100*ms)
+		feed(&f, start)
+
+		// 400ms later the timestamp has wrapped.
+		pad, reset := feed(&f, start+400*ms)
+		require.Less(t, start+400*ms, start)
+		require.Equal(t, 380*trackOutAudioSamplesPerMs, pad)
+		require.False(t, reset)
+
+		// And a gap at the threshold across the wrap still resets.
+		_, reset = feed(&f, start+400*ms+liveGapThreshold)
+		require.True(t, reset)
+	})
+
+	t.Run("no drift across many small gaps", func(t *testing.T) {
+		var f liveGapFiller
+		ts := uint32(7)
+		feed(&f, ts)
+		var total uint64
+		for i := 0; i < 1000; i++ {
+			// 19201 isn't a multiple of 3, so per-gap truncation would lose samples.
+			ts += 19201
+			total += 19201
+			f.next(ts)
+			require.Equal(t, int(total/3), f.fed)
+			f.decoded(testFrameSamples)
+		}
+	})
+
+	t.Run("older packet is ignored", func(t *testing.T) {
+		var f liveGapFiller
+		feed(&f, 10000)
+		pad, reset := f.next(9000)
+		require.Zero(t, pad)
+		require.False(t, reset)
+	})
+
+	t.Run("reset starts a new window", func(t *testing.T) {
+		var f liveGapFiller
+		feed(&f, 1)
+		f.reset()
+		pad, reset := feed(&f, 1+400*ms)
+		require.Zero(t, pad)
+		require.False(t, reset)
+	})
+}

@@ -34,7 +34,66 @@ type captionPackage struct {
 	retCh chan string
 }
 
-func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsCh <-chan []byte) {
+// livePacket is an audio packet sent to the live captions of a track.
+type livePacket struct {
+	payload []byte
+	ts      uint32 // RTP timestamp
+}
+
+// liveGapThreshold is the RTP timestamp delta at which a gap ends the utterance.
+// It matches removeWindowAfterSilence, when the window would be dropped anyway.
+const liveGapThreshold = uint32(removeWindowAfterSilence / time.Millisecond * trackInAudioSamplesPerMs)
+
+// liveGapFiller keeps the live window aligned with real time using RTP timestamps,
+// since the sender stops sending packets during silence (Opus DTX). It builds on
+// gapFiller by unwrapping the 32-bit timestamps into an offset from the first packet.
+type liveGapFiller struct {
+	filler  gapFiller
+	started bool
+	prevTS  uint32
+	offset  uint64
+	fed     int // samples decoded and padded since the first packet
+}
+
+// next returns how many zero samples to append before the decoded PCM of the packet
+// with timestamp ts. If reset is true the gap was long enough to end the utterance:
+// the caller must drop the window, and the packet starts a new one.
+func (l *liveGapFiller) next(ts uint32) (pad int, reset bool) {
+	if l.started {
+		// uint32 arithmetic makes the delta wrap-safe.
+		delta := ts - l.prevTS
+		switch {
+		case delta >= 1<<31:
+			// Older than the previous packet, nothing sensible to pad.
+			return 0, false
+		case delta >= liveGapThreshold:
+			reset = true
+		default:
+			l.prevTS = ts
+			l.offset += uint64(delta)
+			pad = l.filler.padSamples(l.offset, l.fed)
+			l.fed += pad
+			return pad, false
+		}
+	}
+
+	l.reset()
+	l.started, l.prevTS = true, ts
+	l.filler.padSamples(0, 0) // marks the start
+	return 0, reset
+}
+
+// decoded accounts for n samples of decoded PCM.
+func (l *liveGapFiller) decoded(n int) {
+	l.fed += n
+}
+
+// reset must be called whenever the window is dropped, so the next packet starts a new one.
+func (l *liveGapFiller) reset() {
+	*l = liveGapFiller{}
+}
+
+func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsCh <-chan livePacket) {
 	opusDec, err := opus.NewDecoder(trackOutAudioRate, trackAudioChannels)
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create opus decoder for live captions",
@@ -72,34 +131,51 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 
 	pcmBuf := make([]float32, trackOutFrameSize)
 
+	windowPressureLimitSamples := windowPressureLimitSec * 1000 * trackOutAudioSamplesPerMs
+	window := make([]float32, 0, windowPressureLimitSamples)
+	prevTranscribedPos := 0
+	prevWindowLen := 0
+	var prevAudioAt time.Time
+
+	var filler liveGapFiller
+	var paddedSamples int // padded since the last tick
+	var windowReset bool  // the window was reset by a gap since the last tick
+
 	// readTrackPktPayloads drains the pktPayloadsCh (audio data from the track) and converts it to PCM.
 	readTrackPktPayloads := func(window []float32) ([]float32, error) {
 		for {
 			select {
-			case payload, ok := <-pktPayloadsCh:
+			case pkt, ok := <-pktPayloadsCh:
 				if !ok {
 					// Exit on channel close
 					return nil, errors.New("closed")
 				}
-				n, err := opusDec.Decode(payload, pcmBuf)
+				pad, reset := filler.next(pkt.ts)
+				if reset {
+					// Same as the stale window reset below.
+					window = window[:0]
+					prevWindowLen = 0
+					prevTranscribedPos = 0
+					windowReset = true
+				}
+				if pad > 0 {
+					window = append(window, make([]float32, pad)...)
+					paddedSamples += pad
+				}
+				n, err := opusDec.Decode(pkt.payload, pcmBuf)
 				if err != nil {
 					slog.Error("failed to decode audio data for live captions",
 						slog.String("err", err.Error()),
 						slog.String("trackID", ctx.trackID))
 				}
 				window = append(window, pcmBuf[:n]...)
+				filler.decoded(n)
 			default:
 				// Done draining
 				return window, nil
 			}
 		}
 	}
-
-	windowPressureLimitSamples := windowPressureLimitSec * 1000 * trackOutAudioSamplesPerMs
-	window := make([]float32, 0, windowPressureLimitSamples)
-	prevTranscribedPos := 0
-	prevWindowLen := 0
-	var prevAudioAt time.Time
 
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
@@ -124,6 +200,16 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			return
 		}
 
+		if len(window) > 0 || paddedSamples > 0 || windowReset {
+			slog.Debug("processLiveCaptionsForTrack: tick",
+				slog.Int("windowMs", len(window)/trackOutAudioSamplesPerMs),
+				slog.Int("paddedMs", paddedSamples/trackOutAudioSamplesPerMs),
+				slog.Bool("windowReset", windowReset),
+				slog.String("trackID", ctx.trackID),
+				slog.String("username", ctx.user.Username))
+		}
+		paddedSamples, windowReset = 0, false
+
 		// track how long we were waiting until consuming the next batch of audio data, as a measure
 		// of the pressure on the transcription process
 		newAudioLenMs := (len(window) - prevWindowLen) / trackOutAudioSamplesPerMs
@@ -140,6 +226,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 				window = window[:0]
 				prevWindowLen = 0
 				prevTranscribedPos = 0
+				filler.reset()
 			}
 			continue
 		}
@@ -153,6 +240,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 			window = window[:0]
 			prevWindowLen = 0
 			prevTranscribedPos = 0
+			filler.reset()
 			// TODO: report a window-dropped metric once metrics have a non-websocket path.
 			slog.Warn("processLiveCaptionsForTrack: window dropped",
 				slog.String("trackID", ctx.trackID))
@@ -188,6 +276,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 		if windowFinished {
 			window = window[:0]
 			prevTranscribedPos = 0
+			filler.reset()
 			prevWindowLen = 0
 			continue
 		}
@@ -399,6 +488,10 @@ func (t *Transcriber) sendCaption(sessionID, text string) {
 		return
 	}
 
+	slog.Debug("sendCaption: sending caption",
+		slog.String("sessionID", sessionID),
+		slog.String("text", text),
+		slog.Int64("sentAt", time.Now().UnixMilli()))
 	if err := publish(payload); err != nil {
 		slog.Error("sendCaption: failed to publish caption",
 			slog.String("err", err.Error()), slog.String("sessionID", sessionID))
