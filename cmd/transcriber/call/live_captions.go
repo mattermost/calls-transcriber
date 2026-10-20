@@ -490,7 +490,7 @@ func (t *Transcriber) sendCaption(sessionID, text string) {
 
 	slog.Debug("sendCaption: sending caption",
 		slog.String("sessionID", sessionID),
-		slog.String("text", text),
+		slog.Int("textLen", len(text)),
 		slog.Int64("sentAt", time.Now().UnixMilli()))
 	if err := publish(payload); err != nil {
 		slog.Error("sendCaption: failed to publish caption",
