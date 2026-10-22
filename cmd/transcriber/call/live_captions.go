@@ -57,15 +57,16 @@ type liveGapFiller struct {
 
 // next returns how many zero samples to append before the decoded PCM of the packet
 // with timestamp ts. If reset is true the gap was long enough to end the utterance:
-// the caller must drop the window, and the packet starts a new one.
-func (l *liveGapFiller) next(ts uint32) (pad int, reset bool) {
+// the caller must drop the window, and the packet starts a new one. If ok is false the
+// packet is older than the previous one and the caller must skip it.
+func (l *liveGapFiller) next(ts uint32) (pad int, reset, ok bool) {
 	if l.started {
 		// uint32 arithmetic makes the delta wrap-safe.
 		delta := ts - l.prevTS
 		switch {
 		case delta >= 1<<31:
 			// Older than the previous packet, nothing sensible to pad.
-			return 0, false
+			return 0, false, false
 		case delta >= liveGapThreshold:
 			reset = true
 		default:
@@ -73,14 +74,14 @@ func (l *liveGapFiller) next(ts uint32) (pad int, reset bool) {
 			l.offset += uint64(delta)
 			pad = l.filler.padSamples(l.offset, l.fed)
 			l.fed += pad
-			return pad, false
+			return pad, false, true
 		}
 	}
 
 	l.reset()
 	l.started, l.prevTS = true, ts
 	l.filler.padSamples(0, 0) // marks the start
-	return 0, reset
+	return 0, reset, true
 }
 
 // decoded accounts for n samples of decoded PCM.
@@ -150,7 +151,10 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					// Exit on channel close
 					return nil, errors.New("closed")
 				}
-				pad, reset := filler.next(pkt.ts)
+				pad, reset, ok := filler.next(pkt.ts)
+				if !ok {
+					continue
+				}
 				if reset {
 					// Same as the stale window reset below.
 					window = window[:0]

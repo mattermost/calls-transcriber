@@ -10,7 +10,8 @@ import (
 func TestLiveGapFiller(t *testing.T) {
 	// feed returns the padding and reset for a packet at ts, then "decodes" 20ms of it.
 	feed := func(f *liveGapFiller, ts uint32) (int, bool) {
-		pad, reset := f.next(ts)
+		pad, reset, ok := f.next(ts)
+		require.True(t, ok)
 		if reset {
 			f.fed = 0 // the caller drops the window
 		}
@@ -104,9 +105,17 @@ func TestLiveGapFiller(t *testing.T) {
 	t.Run("older packet is ignored", func(t *testing.T) {
 		var f liveGapFiller
 		feed(&f, 10000)
-		pad, reset := f.next(9000)
+		fed := f.fed
+		pad, reset, ok := f.next(9000)
 		require.Zero(t, pad)
 		require.False(t, reset)
+		require.False(t, ok)
+		require.Equal(t, fed, f.fed)
+
+		// And the next in-order packet is still measured from the last accepted one.
+		pad, _, ok = f.next(10000 + 400*ms)
+		require.True(t, ok)
+		require.Equal(t, 400*trackOutAudioSamplesPerMs-fed, pad)
 	})
 
 	t.Run("reset starts a new window", func(t *testing.T) {
