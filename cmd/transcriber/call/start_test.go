@@ -131,6 +131,12 @@ func TestCreateLiveKitSessionAPI(t *testing.T) {
 			errMsg: "failed to create livekit session: job not in progress or already started",
 		},
 		{
+			name:   "route not found (Calls v1 plugin)",
+			status: http.StatusNotFound,
+			body:   "404 page not found\n",
+			errMsg: "returned 404; the Calls plugin may be disabled or is not a LiveKit (v2) deployment",
+		},
+		{
 			name:   "unauthorized",
 			status: http.StatusUnauthorized,
 			body:   `{"message": "unauthorized"}`,
@@ -334,14 +340,39 @@ func TestStart(t *testing.T) {
 		require.Equal(t, 1, ps.statusCallCount())
 	})
 
-	t.Run("disables live captions", func(t *testing.T) {
+	t.Run("publishes captions on the caption topic when live captions are on", func(t *testing.T) {
+		_, tr := newPluginServer(t, http.StatusOK, startedBody)
+		room := &fakeRoom{}
+		fc := &fakeConnector{room: room}
+		tr.connectToRoom = fc.connect
+		tr.cfg.LiveCaptionsOn = true
+		tr.cfg.LiveCaptionsNumTranscribers = 0 // don't start the transcriber pool
+
+		require.NoError(t, tr.Start(context.Background()))
+
+		tr.roomMu.Lock()
+		publish := tr.publishData
+		tr.roomMu.Unlock()
+		require.NotNil(t, publish)
+
+		require.NoError(t, publish([]byte(`{"session_id":"sid","text":"hello"}`)))
+		require.Equal(t, []publishedData{{
+			payload:  []byte(`{"session_id":"sid","text":"hello"}`),
+			topic:    "caption",
+			reliable: false,
+		}}, room.publishedData())
+	})
+
+	t.Run("does not set up caption publishing when live captions are off", func(t *testing.T) {
 		_, tr := newPluginServer(t, http.StatusOK, startedBody)
 		fc := &fakeConnector{room: &fakeRoom{}}
 		tr.connectToRoom = fc.connect
-		tr.cfg.LiveCaptionsOn = true
 
 		require.NoError(t, tr.Start(context.Background()))
-		require.False(t, tr.cfg.LiveCaptionsOn)
+
+		tr.roomMu.Lock()
+		defer tr.roomMu.Unlock()
+		require.Nil(t, tr.publishData)
 	})
 
 	t.Run("disconnects the room and finishes when reporting started fails", func(t *testing.T) {

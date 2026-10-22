@@ -60,6 +60,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 	if err != nil {
 		slog.Error("processLiveCaptionsForTrack: failed to create speech detector",
 			slog.String("err", err.Error()))
+		return
 	}
 	defer func() {
 		if err := sd.Destroy(); err != nil {
@@ -112,7 +113,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 	// - If window goes over its limit, we drop the oldest segments until it's below the limit
 	// - Wait for the transcription (let `tick`s pass so that we're only
 	//   transcribing a particular track once at a time)
-	// - Send the transcription to the plugin to be redistributed to clients.
+	// - Publish the transcription to the call room as a LiveKit data message.
 	// - finish and wait for next `tick`
 
 	for range ticker.C {
@@ -230,8 +231,8 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					slog.Debug("processLiveCaptionsForTrack: received empty text, ignoring.")
 					break
 				}
-				// TODO(MM-71164 phase 2): publish the caption over LiveKit data messages.
-				slog.Debug("processLiveCaptionsForTrack: caption dropped, LiveKit delivery not implemented",
+				t.sendCaption(ctx.sessionID, text)
+				slog.Debug("processLiveCaptionsForTrack: caption processed",
 					slog.String("trackID", ctx.trackID),
 					slog.Float64("newAudioLenMs", float64(newAudioLenMs)))
 			}
@@ -379,14 +380,39 @@ func cutWindowToSize(trackID string, window []float32, segments []segmentSamples
 	return window, prevTranscribedPos
 }
 
-func (t *Transcriber) startTranscriberPool() { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
+// sendCaption publishes a caption for the given speaker session to the call room
+// as a lossy LiveKit data message. Captions are best effort: failures are logged
+// and the caption is dropped.
+func (t *Transcriber) sendCaption(sessionID, text string) {
+	t.roomMu.Lock()
+	publish := t.publishData
+	t.roomMu.Unlock()
+	if publish == nil {
+		slog.Debug("sendCaption: not connected to the room yet, dropping caption", slog.String("sessionID", sessionID))
+		return
+	}
+
+	payload, err := buildCaptionPayload(sessionID, text)
+	if err != nil {
+		slog.Error("sendCaption: failed to build caption payload",
+			slog.String("err", err.Error()), slog.String("sessionID", sessionID))
+		return
+	}
+
+	if err := publish(payload); err != nil {
+		slog.Error("sendCaption: failed to publish caption",
+			slog.String("err", err.Error()), slog.String("sessionID", sessionID))
+	}
+}
+
+func (t *Transcriber) startTranscriberPool() {
 	for i := 0; i < t.cfg.LiveCaptionsNumTranscribers; i++ {
 		t.captionsPoolWg.Add(1)
 		go t.handleTranscriptionRequests(i)
 	}
 }
 
-func (t *Transcriber) handleTranscriptionRequests(num int) { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
+func (t *Transcriber) handleTranscriptionRequests(num int) {
 	slog.Debug(fmt.Sprintf("live captions, handleTranscriptionRequests: starting transcriber #%d", num))
 
 	transcriber, err := t.newLiveCaptionsTranscriber()
@@ -416,7 +442,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) { //nolint:unused // 
 				slog.Error("live captions, handleTranscriptionRequests: failed to transcribe audio samples",
 					slog.String("err", err.Error()))
 				packet.retCh <- ""
-				return
+				continue
 			}
 
 			if len(transcribed) == 0 {
@@ -428,7 +454,7 @@ func (t *Transcriber) handleTranscriptionRequests(num int) { //nolint:unused // 
 	}
 }
 
-func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) { //nolint:unused // not started until live captions are delivered over LiveKit (MM-71164 phase 2)
+func (t *Transcriber) newLiveCaptionsTranscriber() (transcribe.Transcriber, error) {
 	switch t.cfg.TranscribeAPI {
 	case config.TranscribeAPIAzure:
 		// Only supporting WhisperCPP live captions for the time being.
