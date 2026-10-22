@@ -105,6 +105,9 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 
 	var prevArrivalTime time.Time
 	var prevRTPTimestamp uint32
+	// liveRTPTimestampOffset applies the same gap corrections as the OGG file to the
+	// timestamps sent to the live captions.
+	var liveRTPTimestampOffset uint32
 
 	slog.Debug("processing voice track",
 		slog.String("username", user.Username),
@@ -225,6 +228,10 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 			}
 		}
 
+		if gap > 0 {
+			liveRTPTimestampOffset += uint32(gap) - (pkt.Timestamp - prevRTPTimestamp)
+		}
+
 		prevArrivalTime = time.Now()
 		prevRTPTimestamp = pkt.Timestamp
 
@@ -236,7 +243,7 @@ func (t *Transcriber) processLiveTrack(track trackRemote, sessionID string) {
 
 		if t.cfg.LiveCaptionsOn {
 			select {
-			case pktPayloadCh <- livePacket{payload: pkt.Payload, ts: pkt.Timestamp}:
+			case pktPayloadCh <- livePacket{payload: pkt.Payload, ts: pkt.Timestamp + liveRTPTimestampOffset}:
 			default:
 				// TODO: report a pkt-payload-chan-full metric once metrics have a non-websocket path.
 				slog.Warn("processLiveTrack: live captions packet buffer full",
