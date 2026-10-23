@@ -52,7 +52,9 @@ type liveGapFiller struct {
 	started bool
 	prevTS  uint32
 	offset  uint64
-	fed     int // samples decoded and padded since the first packet
+	// fed is the timeline position in samples since the first packet, not the window
+	// length: cutting the window or clamping the padding doesn't change it.
+	fed int
 }
 
 // next returns how many zero samples to append before the decoded PCM of the packet
