@@ -84,6 +84,13 @@ func (l *liveGapFiller) next(ts uint32) (pad int, reset, ok bool) {
 	return 0, reset, true
 }
 
+// clampPad limits the padding for a packet so the window, with the frame about to be
+// decoded, stays within limit. A sender can claim any timestamps, so without this a few
+// packets with large gaps would grow the window far beyond the pressure limit.
+func clampPad(pad, windowLen, limit int) int {
+	return max(0, min(pad, limit-windowLen-trackOutFrameSize))
+}
+
 // decoded accounts for n samples of decoded PCM.
 func (l *liveGapFiller) decoded(n int) {
 	l.fed += n
@@ -162,6 +169,7 @@ func (t *Transcriber) processLiveCaptionsForTrack(ctx trackContext, pktPayloadsC
 					prevTranscribedPos = 0
 					windowReset = true
 				}
+				pad = clampPad(pad, len(window), windowPressureLimitSamples)
 				if pad > 0 {
 					window = append(window, make([]float32, pad)...)
 					paddedSamples += pad

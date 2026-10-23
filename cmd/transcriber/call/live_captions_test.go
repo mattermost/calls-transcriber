@@ -127,3 +127,48 @@ func TestLiveGapFiller(t *testing.T) {
 		require.False(t, reset)
 	})
 }
+
+func TestClampPad(t *testing.T) {
+	const limit = 12 * 1000 * trackOutAudioSamplesPerMs
+
+	tcs := []struct {
+		name      string
+		pad       int
+		windowLen int
+		want      int
+	}{
+		{"no padding", 0, 1000, 0},
+		{"plenty of room", 380 * trackOutAudioSamplesPerMs, 1000, 380 * trackOutAudioSamplesPerMs},
+		{"exactly fits", limit - 1000 - testFrameSamples, 1000, limit - 1000 - testFrameSamples},
+		{"clamped to the room left", limit, 1000, limit - 1000 - testFrameSamples},
+		{"window full", 1000, limit - testFrameSamples, 0},
+		{"window over the limit", 1000, limit + 5000, 0},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, clampPad(tc.pad, tc.windowLen, limit))
+		})
+	}
+
+	t.Run("sender claiming large gaps can't grow the window past the limit", func(t *testing.T) {
+		var f liveGapFiller
+		var windowLen int
+		// A packet every 20ms of wall clock time with an RTP delta just below the reset threshold.
+		ts := uint32(1)
+		for i := 0; i < 600; i++ {
+			pad, reset, ok := f.next(ts)
+			require.True(t, ok)
+			require.False(t, reset)
+			pad = clampPad(pad, windowLen, limit)
+			windowLen += pad
+			if i < 3 {
+				require.LessOrEqual(t, windowLen, limit)
+			}
+			windowLen += testFrameSamples
+			f.decoded(testFrameSamples)
+			ts += liveGapThreshold - 1
+		}
+		// Past the limit the window only grows by the real decoded audio.
+		require.LessOrEqual(t, windowLen, limit+600*testFrameSamples)
+	})
+}
