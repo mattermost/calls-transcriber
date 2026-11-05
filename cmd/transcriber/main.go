@@ -68,6 +68,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := checkCPUFeatures(); err != nil {
+		slog.Error("CPU feature check failed", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+
 	cfg, err := config.FromEnv()
 	if err != nil {
 		slog.Error("failed to load config", slog.String("err", err.Error()))

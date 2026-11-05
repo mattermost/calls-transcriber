@@ -25,6 +25,13 @@ if [ "$TARGET_ARCH" == "arm64" ]; then
 
 	echo "Adding CMAKE_ARGS on detected arm64 host";
 	CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=armv8-a"
+else
+	# Build for a fixed baseline rather than the build host's CPU
+	# (-march=native), otherwise the image can crash with SIGILL on CPUs that
+	# lack extensions the build host had (e.g. AVX-512).
+	# Keep in sync with checkCPUFeatures in cmd/transcriber/cpucheck_amd64.go.
+	echo "Adding CMAKE_ARGS for x86_64 baseline (AVX2, FMA, F16C; no BMI2/AVX-512)";
+	CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=OFF -DGGML_AVX512=OFF"
 fi
 
 
