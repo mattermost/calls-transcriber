@@ -9,9 +9,7 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
-// mmAPIClient adapts *model.Client4 to APIClient. mattermost/server/public v0.6
-// unexported Client4.DoAPIRequest*; these methods keep the previous behavior of
-// calling a fully-qualified plugin URL and turning non-2xx responses into an AppError.
+// mmAPIClient adapts *model.Client4 to APIClient.
 type mmAPIClient struct {
 	*model.Client4
 }
