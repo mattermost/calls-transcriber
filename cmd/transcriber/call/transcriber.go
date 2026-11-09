@@ -117,7 +117,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 
 	t = &Transcriber{
 		cfg:           cfg,
-		apiClient:     apiClient,
+		apiClient:     mmAPIClient{Client4: apiClient},
 		apiURL:        apiClient.URL,
 		dataPath:      dataPath,
 		connectToRoom: connectToLiveKitRoom,
