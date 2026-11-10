@@ -64,7 +64,7 @@ func connectToLiveKitRoom(url, token string, cb *lksdk.RoomCallback) (roomConn, 
 type APIClient interface {
 	DoAPIRequest(ctx context.Context, method, url, data, etag string) (*http.Response, error)
 	DoAPIRequestBytes(ctx context.Context, method, url string, data []byte, etag string) (*http.Response, error)
-	DoAPIRequestReader(ctx context.Context, method, url string, data io.Reader, headers map[string]string) (*http.Response, error)
+	DoAPIRequestReader(ctx context.Context, method, url, contentType string, data io.Reader, headers map[string]string) (*http.Response, error)
 }
 
 type Transcriber struct {
@@ -117,7 +117,7 @@ func NewTranscriber(cfg config.CallTranscriberConfig, dataPath string) (t *Trans
 
 	t = &Transcriber{
 		cfg:           cfg,
-		apiClient:     mmAPIClient{Client4: apiClient},
+		apiClient:     apiClient,
 		apiURL:        apiClient.URL,
 		dataPath:      dataPath,
 		connectToRoom: connectToLiveKitRoom,

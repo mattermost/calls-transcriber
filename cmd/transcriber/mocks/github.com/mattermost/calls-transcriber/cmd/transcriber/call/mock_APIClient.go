@@ -148,9 +148,9 @@ func (_c *MockAPIClient_DoAPIRequestBytes_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
-// DoAPIRequestReader provides a mock function with given fields: ctx, method, url, data, headers
-func (_m *MockAPIClient) DoAPIRequestReader(ctx context.Context, method string, url string, data io.Reader, headers map[string]string) (*http.Response, error) {
-	ret := _m.Called(ctx, method, url, data, headers)
+// DoAPIRequestReader provides a mock function with given fields: ctx, method, url, contentType, data, headers
+func (_m *MockAPIClient) DoAPIRequestReader(ctx context.Context, method string, url string, contentType string, data io.Reader, headers map[string]string) (*http.Response, error) {
+	ret := _m.Called(ctx, method, url, contentType, data, headers)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DoAPIRequestReader")
@@ -158,19 +158,19 @@ func (_m *MockAPIClient) DoAPIRequestReader(ctx context.Context, method string, 
 
 	var r0 *http.Response
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, io.Reader, map[string]string) (*http.Response, error)); ok {
-		return rf(ctx, method, url, data, headers)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, io.Reader, map[string]string) (*http.Response, error)); ok {
+		return rf(ctx, method, url, contentType, data, headers)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, io.Reader, map[string]string) *http.Response); ok {
-		r0 = rf(ctx, method, url, data, headers)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, io.Reader, map[string]string) *http.Response); ok {
+		r0 = rf(ctx, method, url, contentType, data, headers)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*http.Response)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, io.Reader, map[string]string) error); ok {
-		r1 = rf(ctx, method, url, data, headers)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, io.Reader, map[string]string) error); ok {
+		r1 = rf(ctx, method, url, contentType, data, headers)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -187,15 +187,16 @@ type MockAPIClient_DoAPIRequestReader_Call struct {
 //   - ctx context.Context
 //   - method string
 //   - url string
+//   - contentType string
 //   - data io.Reader
 //   - headers map[string]string
-func (_e *MockAPIClient_Expecter) DoAPIRequestReader(ctx interface{}, method interface{}, url interface{}, data interface{}, headers interface{}) *MockAPIClient_DoAPIRequestReader_Call {
-	return &MockAPIClient_DoAPIRequestReader_Call{Call: _e.mock.On("DoAPIRequestReader", ctx, method, url, data, headers)}
+func (_e *MockAPIClient_Expecter) DoAPIRequestReader(ctx interface{}, method interface{}, url interface{}, contentType interface{}, data interface{}, headers interface{}) *MockAPIClient_DoAPIRequestReader_Call {
+	return &MockAPIClient_DoAPIRequestReader_Call{Call: _e.mock.On("DoAPIRequestReader", ctx, method, url, contentType, data, headers)}
 }
 
-func (_c *MockAPIClient_DoAPIRequestReader_Call) Run(run func(ctx context.Context, method string, url string, data io.Reader, headers map[string]string)) *MockAPIClient_DoAPIRequestReader_Call {
+func (_c *MockAPIClient_DoAPIRequestReader_Call) Run(run func(ctx context.Context, method string, url string, contentType string, data io.Reader, headers map[string]string)) *MockAPIClient_DoAPIRequestReader_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(io.Reader), args[4].(map[string]string))
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(io.Reader), args[5].(map[string]string))
 	})
 	return _c
 }
@@ -205,7 +206,7 @@ func (_c *MockAPIClient_DoAPIRequestReader_Call) Return(_a0 *http.Response, _a1 
 	return _c
 }
 
-func (_c *MockAPIClient_DoAPIRequestReader_Call) RunAndReturn(run func(context.Context, string, string, io.Reader, map[string]string) (*http.Response, error)) *MockAPIClient_DoAPIRequestReader_Call {
+func (_c *MockAPIClient_DoAPIRequestReader_Call) RunAndReturn(run func(context.Context, string, string, string, io.Reader, map[string]string) (*http.Response, error)) *MockAPIClient_DoAPIRequestReader_Call {
 	_c.Call.Return(run)
 	return _c
 }

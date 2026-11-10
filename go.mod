@@ -7,7 +7,7 @@ require (
 	github.com/livekit/protocol v1.53.2
 	github.com/livekit/server-sdk-go/v2 v2.19.0
 	github.com/mattermost/mattermost-plugin-calls/server/public v0.0.0-20240308191258-3efb429339df
-	github.com/mattermost/mattermost/server/public v0.6.0
+	github.com/mattermost/mattermost/server/public v0.6.1
 	github.com/pion/interceptor v0.1.51
 	github.com/pion/randutil v0.1.0
 	github.com/pion/rtp v1.10.6
