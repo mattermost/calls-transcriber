@@ -192,7 +192,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 
 		ctx, cancelCtx = context.WithTimeout(context.Background(), httpUploadTimeout)
 		defer cancelCtx()
-		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, vttFile, nil)
+		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, "", vttFile, nil)
 		if err != nil {
 			slog.Error("failed to upload data", slog.String("err", err.Error()))
 			lastErr = err
@@ -239,7 +239,7 @@ func (t *Transcriber) publishTranscription(tr transcribe.Transcription) (err err
 
 		ctx, cancelCtx = context.WithTimeout(context.Background(), httpUploadTimeout)
 		defer cancelCtx()
-		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, textFile, nil)
+		resp, err = t.apiClient.DoAPIRequestReader(ctx, http.MethodPost, apiURL+"/uploads/"+us.Id, "", textFile, nil)
 		if err != nil {
 			slog.Error("failed to upload data", slog.String("err", err.Error()))
 			lastErr = err
